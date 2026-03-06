@@ -297,10 +297,13 @@ def search_texto(termo, tabela="autos", limit=50):
 
 
 def resumo_autuado(nome=None, cpf_cnpj=None):
-    """Full profile of an autuado: autos + embargos + totals (FTS5 JOIN)."""
+    """Full profile of an autuado: autos + embargos + totals.
+    Single-query approach: fetch all matching rows once, process in Python.
+    Avoids 5 separate FTS JOINs which are slow on disk-bound servers.
+    """
     conn = get_conn()
 
-    # Build FTS joins and conditions for autos_infracao
+    # Build FTS joins for autos_infracao
     ai_joins = []
     ai_conditions = []
     ai_params = []
@@ -324,7 +327,7 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     ai_join = " ".join(ai_joins)
     ai_where = " AND ".join(ai_conditions) if ai_conditions else "1=1"
 
-    # Build FTS joins and conditions for termos_embargo
+    # Build FTS joins for termos_embargo
     te_joins = []
     te_conditions = []
     te_params = []
@@ -348,76 +351,119 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     te_join = " ".join(te_joins)
     te_where = " AND ".join(te_conditions) if te_conditions else "1=1"
 
-    # Autos summary
-    ai_summary = dict(conn.execute(f"""
-        SELECT COUNT(*) as total_autos,
-               SUM(CASE WHEN a.SIT_CANCELADO = 'N' THEN 1 ELSE 0 END) as autos_ativos,
-               SUM(CASE WHEN a.SIT_CANCELADO = 'S' THEN 1 ELSE 0 END) as autos_cancelados,
-               GROUP_CONCAT(DISTINCT a.UF) as ufs,
-               GROUP_CONCAT(DISTINCT a.TIPO_INFRACAO) as tipos,
-               MIN(a.DAT_HORA_AUTO_INFRACAO) as primeiro_auto,
-               MAX(a.DAT_HORA_AUTO_INFRACAO) as ultimo_auto
+    # === SINGLE QUERY: fetch all matching autos at once ===
+    ai_rows = conn.execute(f"""
+        SELECT a.DAT_HORA_AUTO_INFRACAO, a.SIT_CANCELADO, a.UF, a.TIPO_INFRACAO,
+               a.VAL_AUTO_INFRACAO, a.TIPO_MULTA, a.DES_STATUS_FORMULARIO,
+               a.NUM_AUTO_INFRACAO, a.MUNICIPIO,
+               a.DES_AUTO_INFRACAO, a.DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO
         FROM autos_infracao a {ai_join} WHERE {ai_where}
-    """, ai_params).fetchone())
-
-    # Value summary
-    val_rows = conn.execute(f"""
-        SELECT a.VAL_AUTO_INFRACAO, a.TIPO_MULTA, a.DES_STATUS_FORMULARIO
-        FROM autos_infracao a {ai_join} WHERE {ai_where} AND a.SIT_CANCELADO = 'N'
     """, ai_params).fetchall()
 
+    # Process autos in Python (instant for <10K rows)
+    total_autos = len(ai_rows)
+    autos_ativos = 0
+    autos_cancelados = 0
+    ufs = set()
+    tipos = set()
+    datas = []
     total_valor = 0.0
     valores_invalidos = 0
     status_counts = {}
-    for r in val_rows:
-        val = parse_valor_br(r[0])
-        if r[0] and r[0].strip() and val == 0.0:
-            valores_invalidos += 1
-        total_valor += val
-        status = r[2] or 'Desconhecido'
-        status_counts[status] = status_counts.get(status, 0) + 1
+    active_autos = []
 
-    ai_summary['valor_total'] = fmt_valor(total_valor)
-    ai_summary['valor_total_float'] = total_valor
-    ai_summary['status_formulario'] = status_counts
+    for r in ai_rows:
+        dat, cancelado, uf, tipo, valor, tipo_multa, status = r[0], r[1], r[2], r[3], r[4], r[5], r[6]
+        if cancelado == 'N':
+            autos_ativos += 1
+            val = parse_valor_br(valor)
+            if valor and valor.strip() and val == 0.0:
+                valores_invalidos += 1
+            total_valor += val
+            st = status or 'Desconhecido'
+            status_counts[st] = status_counts.get(st, 0) + 1
+            active_autos.append(dict(zip(
+                ['DAT_HORA_AUTO_INFRACAO', 'SIT_CANCELADO', 'UF', 'TIPO_INFRACAO',
+                 'VAL_AUTO_INFRACAO', 'TIPO_MULTA', 'DES_STATUS_FORMULARIO',
+                 'NUM_AUTO_INFRACAO', 'MUNICIPIO',
+                 'DES_AUTO_INFRACAO', 'DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO'],
+                r
+            )))
+        elif cancelado == 'S':
+            autos_cancelados += 1
+        if uf:
+            ufs.add(uf)
+        if tipo:
+            tipos.add(tipo)
+        if dat:
+            datas.append(dat)
+
+    ai_summary = {
+        'total_autos': total_autos,
+        'autos_ativos': autos_ativos,
+        'autos_cancelados': autos_cancelados,
+        'ufs': ','.join(sorted(ufs)) if ufs else None,
+        'tipos': ','.join(sorted(tipos)) if tipos else None,
+        'primeiro_auto': min(datas) if datas else None,
+        'ultimo_auto': max(datas) if datas else None,
+        'valor_total': fmt_valor(total_valor),
+        'valor_total_float': total_valor,
+        'status_formulario': status_counts,
+    }
     if valores_invalidos:
         ai_summary['valores_nao_parseados'] = valores_invalidos
 
-    # Embargos summary
-    te_summary = dict(conn.execute(f"""
-        SELECT COUNT(*) as total_embargos,
-               SUM(CASE WHEN (t.SIT_DESEMBARGO IS NULL OR t.SIT_DESEMBARGO = '') AND t.SIT_CANCELADO = 'N' THEN 1 ELSE 0 END) as embargos_ativos,
-               SUM(CASE WHEN t.SIT_CANCELADO = 'S' THEN 1 ELSE 0 END) as embargos_cancelados,
-               GROUP_CONCAT(DISTINCT t.MUNICIPIO) as municipios
-        FROM termos_embargo t {te_join} WHERE {te_where}
-    """, te_params).fetchone())
+    # Recent active autos (last 10)
+    active_autos.sort(key=lambda r: r.get('DAT_HORA_AUTO_INFRACAO', ''), reverse=True)
+    recent_ai = active_autos[:10]
 
-    # Recent autos (last 10)
-    recent_ai = conn.execute(f"""
-        SELECT a.NUM_AUTO_INFRACAO, a.DAT_HORA_AUTO_INFRACAO, a.VAL_AUTO_INFRACAO,
-               a.TIPO_INFRACAO, a.UF, a.MUNICIPIO, a.DES_STATUS_FORMULARIO,
-               a.DES_AUTO_INFRACAO, a.DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO
-        FROM autos_infracao a {ai_join} WHERE {ai_where} AND a.SIT_CANCELADO = 'N'
-        ORDER BY a.DAT_HORA_AUTO_INFRACAO DESC LIMIT 10
-    """, ai_params).fetchall()
-
-    # Active embargos
-    active_te = conn.execute(f"""
-        SELECT t.NUM_TAD, t.DAT_EMBARGO, t.QTD_AREA_EMBARGADA, t.UF, t.MUNICIPIO,
-               t.DES_TAD, t.DES_LOCALIZACAO, t.SIT_DESEMBARGO
+    # === SINGLE QUERY: fetch all matching embargos at once ===
+    te_rows = conn.execute(f"""
+        SELECT t.SIT_DESEMBARGO, t.SIT_CANCELADO, t.MUNICIPIO,
+               t.NUM_TAD, t.DAT_EMBARGO, t.QTD_AREA_EMBARGADA, t.UF,
+               t.DES_TAD, t.DES_LOCALIZACAO
         FROM termos_embargo t {te_join} WHERE {te_where}
-            AND (t.SIT_DESEMBARGO IS NULL OR t.SIT_DESEMBARGO = '')
-            AND t.SIT_CANCELADO = 'N'
-        ORDER BY t.DAT_EMBARGO DESC LIMIT 10
     """, te_params).fetchall()
+
+    # Process embargos in Python
+    total_embargos = len(te_rows)
+    embargos_ativos = 0
+    embargos_cancelados = 0
+    municipios = set()
+    active_embargos = []
+
+    for r in te_rows:
+        desembargo, cancelado, mun = r[0], r[1], r[2]
+        if cancelado == 'S':
+            embargos_cancelados += 1
+        elif not desembargo or desembargo == '':
+            embargos_ativos += 1
+            active_embargos.append(dict(zip(
+                ['SIT_DESEMBARGO', 'SIT_CANCELADO', 'MUNICIPIO',
+                 'NUM_TAD', 'DAT_EMBARGO', 'QTD_AREA_EMBARGADA', 'UF',
+                 'DES_TAD', 'DES_LOCALIZACAO'],
+                r
+            )))
+        if mun:
+            municipios.add(mun)
+
+    te_summary = {
+        'total_embargos': total_embargos,
+        'embargos_ativos': embargos_ativos,
+        'embargos_cancelados': embargos_cancelados,
+        'municipios': ','.join(sorted(municipios)) if municipios else None,
+    }
+
+    # Sort active embargos by date
+    active_embargos.sort(key=lambda r: r.get('DAT_EMBARGO', ''), reverse=True)
 
     conn.close()
 
     return {
         "autos_infracao": ai_summary,
         "termos_embargo": te_summary,
-        "ultimos_autos": [dict(r) for r in recent_ai],
-        "embargos_ativos": [dict(r) for r in active_te],
+        "ultimos_autos": recent_ai,
+        "embargos_ativos": active_embargos[:10],
     }
 
 
