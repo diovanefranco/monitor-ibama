@@ -11,7 +11,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.dirname(_SCRIPT_DIR)  # ZIPs live one level up
 
 # GitHub Releases mirror (works from cloud servers like Render)
-GH_RELEASE = "https://github.com/diovanefranco/monitor-ibama/releases/download/data-2026-03-05"
+GH_RELEASE = "https://github.com/diovanefranco/monitor-ibama/releases/download/data-2026-03-06"
 
 # Primary source URLs (IBAMA - may block non-BR IPs via Cloudflare)
 IBAMA_URLS = {
