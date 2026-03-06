@@ -8,3 +8,5 @@ __pycache__/
 .DS_Store
 venv/
 .env
+# SEMA-MT GeoJSON data files (downloaded from WFS)
+sema_*.json

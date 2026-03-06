@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitor IBAMA</title>
+    <title>Monitor Ambiental</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f5f6fa; }
@@ -24,660 +24,558 @@
         .detail-content { font-size: .82rem; }
         .detail-content dt { color: #555; }
         .result-count { color: #666; font-size: .9rem; }
-        #results-wrapper { max-height: 70vh; overflow-y: auto; }
+        .results-wrapper { max-height: 70vh; overflow-y: auto; }
         .form-label { font-size: .85rem; font-weight: 500; }
         .form-control, .form-select { font-size: .85rem; }
         .resumo-section h5 { color: #1b5e20; border-bottom: 2px solid #e8f5e9; padding-bottom: .5rem; }
+        /* Main organ tabs */
+        .organ-tabs { border-bottom: 3px solid #2e7d32; margin-bottom: 0; }
+        .organ-tabs .nav-link { font-size: 1.1rem; font-weight: 600; padding: .8rem 2rem; color: #555;
+            border: none; border-bottom: 3px solid transparent; margin-bottom: -3px; }
+        .organ-tabs .nav-link.active { color: #fff; background: #2e7d32; border-radius: 8px 8px 0 0;
+            border-bottom: 3px solid #2e7d32; }
+        .organ-tabs .nav-link:not(.active):hover { color: #2e7d32; background: #e8f5e9; border-radius: 8px 8px 0 0; }
+        .sub-tabs { margin-top: .5rem; }
+        .badge-siga { background: #1565c0; font-size: .7rem; }
+        .badge-legado { background: #ef6c00; font-size: .7rem; }
     </style>
 </head>
 <body>
     <nav class="navbar navbar-dark mb-4">
         <div class="container">
-            <span class="navbar-brand mb-0 h1">Monitor IBAMA</span>
+            <span class="navbar-brand mb-0 h1">Monitor Ambiental</span>
             <span class="text-white-50 small" id="db-stats"></span>
             <a href="/logout" class="btn btn-outline-light btn-sm ms-3">Sair</a>
         </div>
     </nav>
 
     <div class="container">
-        <!-- Tabs -->
-        <ul class="nav nav-tabs mb-3" role="tablist">
+        <!-- MAIN ORGAN TABS -->
+        <ul class="nav organ-tabs" role="tablist">
             <li class="nav-item">
-                <a class="nav-link active" data-bs-toggle="tab" href="#tab-autos">Autos de Infracao</a>
+                <a class="nav-link active" data-bs-toggle="tab" href="#panel-ibama">IBAMA</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-bs-toggle="tab" href="#tab-embargos">Termos de Embargo</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-bs-toggle="tab" href="#tab-texto">Busca Livre</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-bs-toggle="tab" href="#tab-resumo">Resumo Autuado</a>
+                <a class="nav-link" data-bs-toggle="tab" href="#panel-sema">SEMA-MT</a>
             </li>
         </ul>
 
-        <div class="tab-content">
-            <!-- AUTOS -->
-            <div class="tab-pane fade show active" id="tab-autos">
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <form id="form-autos" onsubmit="searchAutos(); return false;">
-                            <div class="row g-2">
-                                <div class="col-md-3">
-                                    <label class="form-label">Nome do Infrator</label>
-                                    <input type="text" class="form-control" id="ai-nome" placeholder="Nome ou parte do nome">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">CPF/CNPJ</label>
-                                    <input type="text" class="form-control" id="ai-cpf" placeholder="Apenas numeros">
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">UF</label>
-                                    <select class="form-select" id="ai-uf">
-                                        <option value="">Todas</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Municipio</label>
-                                    <input type="text" class="form-control" id="ai-municipio" placeholder="Municipio">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">N. Auto</label>
-                                    <input type="text" class="form-control" id="ai-num-auto" placeholder="Numero">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">N. Processo</label>
-                                    <input type="text" class="form-control" id="ai-processo" placeholder="Processo">
-                                </div>
-                            </div>
-                            <div class="row g-2 mt-1">
-                                <div class="col-md-2">
-                                    <label class="form-label">Tipo Infracao</label>
-                                    <select class="form-select" id="ai-tipo">
-                                        <option value="">Todos</option>
-                                        <option value="Flora">Flora</option>
-                                        <option value="Fauna">Fauna</option>
-                                        <option value="Pesca">Pesca</option>
-                                        <option value="Controle ambiental">Ctrl Ambiental</option>
-                                        <option value="Cadastro">Cadastro</option>
-                                        <option value="Unidade de conserva">Unid. Conservacao</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">De</label>
-                                    <input type="number" class="form-control" id="ai-ano-ini" placeholder="Ano" min="1977" max="2026">
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">Ate</label>
-                                    <input type="number" class="form-control" id="ai-ano-fim" placeholder="Ano" min="1977" max="2026">
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">Limite</label>
-                                    <select class="form-select" id="ai-limit">
-                                        <option value="50" selected>50</option>
-                                        <option value="100">100</option>
-                                        <option value="200">200</option>
-                                        <option value="500">500</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-success w-100">
-                                        <span class="spinner spinner-border spinner-border-sm" id="spin-autos"></span>
-                                        Pesquisar
-                                    </button>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="button" class="btn btn-outline-secondary w-100" onclick="clearForm('autos')">Limpar</button>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                <div class="result-count mb-2" id="count-autos"></div>
-                <div id="results-wrapper">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-sm" id="table-autos">
-                            <thead></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+        <div class="tab-content mt-0">
 
-            <!-- EMBARGOS -->
-            <div class="tab-pane fade" id="tab-embargos">
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <form id="form-embargos" onsubmit="searchEmbargos(); return false;">
-                            <div class="row g-2">
-                                <div class="col-md-3">
-                                    <label class="form-label">Nome do Embargado</label>
-                                    <input type="text" class="form-control" id="te-nome" placeholder="Nome ou parte">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">CPF/CNPJ</label>
-                                    <input type="text" class="form-control" id="te-cpf" placeholder="Apenas numeros">
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">UF</label>
-                                    <select class="form-select" id="te-uf">
-                                        <option value="">Todas</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Municipio</label>
-                                    <input type="text" class="form-control" id="te-municipio" placeholder="Municipio">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">N. TAD</label>
-                                    <input type="text" class="form-control" id="te-num-tad" placeholder="Numero">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">N. Processo</label>
-                                    <input type="text" class="form-control" id="te-processo" placeholder="Processo">
-                                </div>
-                            </div>
-                            <div class="row g-2 mt-1">
-                                <div class="col-md-2">
-                                    <label class="form-label">N. Auto Vinculado</label>
-                                    <input type="text" class="form-control" id="te-num-auto" placeholder="Auto">
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">Limite</label>
-                                    <select class="form-select" id="te-limit">
-                                        <option value="50" selected>50</option>
-                                        <option value="100">100</option>
-                                        <option value="200">200</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="te-ativos">
-                                        <label class="form-check-label" for="te-ativos">Somente ativos</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-success w-100">
-                                        <span class="spinner spinner-border spinner-border-sm" id="spin-embargos"></span>
-                                        Pesquisar
-                                    </button>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="button" class="btn btn-outline-secondary w-100" onclick="clearForm('embargos')">Limpar</button>
-                                </div>
-                            </div>
-                        </form>
+<!-- ================================================================ -->
+<!--                         IBAMA PANEL                              -->
+<!-- ================================================================ -->
+<div class="tab-pane fade show active" id="panel-ibama">
+    <ul class="nav nav-tabs sub-tabs mb-3" role="tablist">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#ib-autos">Autos de Infracao</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#ib-embargos">Termos de Embargo</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#ib-texto">Busca Livre</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#ib-resumo">Resumo Autuado</a></li>
+    </ul>
+    <div class="tab-content">
+        <!-- IB AUTOS -->
+        <div class="tab-pane fade show active" id="ib-autos">
+            <div class="card mb-3"><div class="card-body">
+                <form id="form-ib-autos" onsubmit="ibSearchAutos(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label">Nome do Infrator</label>
+                            <input type="text" class="form-control" id="ib-ai-nome" placeholder="Nome ou parte"></div>
+                        <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="ib-ai-cpf" placeholder="Apenas numeros"></div>
+                        <div class="col-md-1"><label class="form-label">UF</label>
+                            <select class="form-select uf-select" id="ib-ai-uf"><option value="">Todas</option></select></div>
+                        <div class="col-md-2"><label class="form-label">Municipio</label>
+                            <input type="text" class="form-control" id="ib-ai-municipio" placeholder="Municipio"></div>
+                        <div class="col-md-2"><label class="form-label">N. Auto</label>
+                            <input type="text" class="form-control" id="ib-ai-num-auto" placeholder="Numero"></div>
+                        <div class="col-md-2"><label class="form-label">N. Processo</label>
+                            <input type="text" class="form-control" id="ib-ai-processo" placeholder="Processo"></div>
                     </div>
-                </div>
-                <div class="result-count mb-2" id="count-embargos"></div>
-                <div id="results-wrapper">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-sm" id="table-embargos">
-                            <thead></thead>
-                            <tbody></tbody>
-                        </table>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-2"><label class="form-label">Tipo Infracao</label>
+                            <select class="form-select" id="ib-ai-tipo"><option value="">Todos</option>
+                                <option value="Flora">Flora</option><option value="Fauna">Fauna</option>
+                                <option value="Pesca">Pesca</option><option value="Controle ambiental">Ctrl Ambiental</option>
+                                <option value="Cadastro">Cadastro</option><option value="Unidade de conserva">Unid. Conservacao</option>
+                            </select></div>
+                        <div class="col-md-1"><label class="form-label">De</label>
+                            <input type="number" class="form-control" id="ib-ai-ano-ini" min="1977" max="2026"></div>
+                        <div class="col-md-1"><label class="form-label">Ate</label>
+                            <input type="number" class="form-control" id="ib-ai-ano-fim" min="1977" max="2026"></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="ib-ai-limit"><option value="50" selected>50</option>
+                                <option value="100">100</option><option value="200">200</option><option value="500">500</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-ib-autos"></span> Pesquisar</button></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('form-ib-autos').reset()">Limpar</button></div>
                     </div>
-                </div>
-            </div>
-
-            <!-- BUSCA LIVRE -->
-            <div class="tab-pane fade" id="tab-texto">
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <form onsubmit="searchTexto(); return false;">
-                            <div class="row g-2">
-                                <div class="col-md-5">
-                                    <label class="form-label">Termo de busca (texto livre)</label>
-                                    <input type="text" class="form-control" id="fts-q" placeholder='Ex: "desmatamento ilegal" OR queimada'>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Buscar em</label>
-                                    <select class="form-select" id="fts-tabela">
-                                        <option value="autos">Autos de Infracao</option>
-                                        <option value="embargos">Termos de Embargo</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-1">
-                                    <label class="form-label">Limite</label>
-                                    <select class="form-select" id="fts-limit">
-                                        <option value="50" selected>50</option>
-                                        <option value="100">100</option>
-                                        <option value="200">200</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-success w-100">
-                                        <span class="spinner spinner-border spinner-border-sm" id="spin-texto"></span>
-                                        Pesquisar
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="form-text mt-1">Use aspas para frases exatas. OR para alternativas. * para prefixo (ex: desmata*)</div>
-                        </form>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-ib-autos"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-ib-autos"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- IB EMBARGOS -->
+        <div class="tab-pane fade" id="ib-embargos">
+            <div class="card mb-3"><div class="card-body">
+                <form id="form-ib-embargos" onsubmit="ibSearchEmbargos(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label">Nome do Embargado</label>
+                            <input type="text" class="form-control" id="ib-te-nome" placeholder="Nome ou parte"></div>
+                        <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="ib-te-cpf" placeholder="Apenas numeros"></div>
+                        <div class="col-md-1"><label class="form-label">UF</label>
+                            <select class="form-select uf-select" id="ib-te-uf"><option value="">Todas</option></select></div>
+                        <div class="col-md-2"><label class="form-label">Municipio</label>
+                            <input type="text" class="form-control" id="ib-te-municipio" placeholder="Municipio"></div>
+                        <div class="col-md-2"><label class="form-label">N. TAD</label>
+                            <input type="text" class="form-control" id="ib-te-num-tad" placeholder="Numero"></div>
+                        <div class="col-md-2"><label class="form-label">N. Processo</label>
+                            <input type="text" class="form-control" id="ib-te-processo" placeholder="Processo"></div>
                     </div>
-                </div>
-                <div class="result-count mb-2" id="count-texto"></div>
-                <div id="results-wrapper">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-sm" id="table-texto">
-                            <thead></thead>
-                            <tbody></tbody>
-                        </table>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-2"><label class="form-label">N. Auto Vinculado</label>
+                            <input type="text" class="form-control" id="ib-te-num-auto" placeholder="Auto"></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="ib-te-limit"><option value="50" selected>50</option>
+                                <option value="100">100</option><option value="200">200</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <div class="form-check"><input class="form-check-input" type="checkbox" id="ib-te-ativos">
+                                <label class="form-check-label" for="ib-te-ativos">Somente ativos</label></div></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-ib-embargos"></span> Pesquisar</button></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('form-ib-embargos').reset()">Limpar</button></div>
                     </div>
-                </div>
-            </div>
-
-            <!-- RESUMO -->
-            <div class="tab-pane fade" id="tab-resumo">
-                <div class="card mb-3">
-                    <div class="card-body">
-                        <form onsubmit="searchResumo(); return false;">
-                            <div class="row g-2">
-                                <div class="col-md-4">
-                                    <label class="form-label">Nome</label>
-                                    <input type="text" class="form-control" id="res-nome" placeholder="Nome do infrator/embargado">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">CPF/CNPJ</label>
-                                    <input type="text" class="form-control" id="res-cpf" placeholder="CPF ou CNPJ">
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-success w-100">
-                                        <span class="spinner spinner-border spinner-border-sm" id="spin-resumo"></span>
-                                        Consultar
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-ib-embargos"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-ib-embargos"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- IB BUSCA LIVRE -->
+        <div class="tab-pane fade" id="ib-texto">
+            <div class="card mb-3"><div class="card-body">
+                <form onsubmit="ibSearchTexto(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-5"><label class="form-label">Termo de busca (texto livre)</label>
+                            <input type="text" class="form-control" id="ib-fts-q" placeholder='Ex: "desmatamento ilegal" OR queimada'></div>
+                        <div class="col-md-2"><label class="form-label">Buscar em</label>
+                            <select class="form-select" id="ib-fts-tabela"><option value="autos">Autos</option><option value="embargos">Embargos</option></select></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="ib-fts-limit"><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-ib-texto"></span> Pesquisar</button></div>
                     </div>
-                </div>
-                <div id="resumo-content"></div>
-            </div>
+                    <div class="form-text mt-1">Use aspas para frases exatas. OR para alternativas. * para prefixo</div>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-ib-texto"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-ib-texto"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- IB RESUMO -->
+        <div class="tab-pane fade" id="ib-resumo">
+            <div class="card mb-3"><div class="card-body">
+                <form onsubmit="ibSearchResumo(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-4"><label class="form-label">Nome</label>
+                            <input type="text" class="form-control" id="ib-res-nome" placeholder="Nome do infrator/embargado"></div>
+                        <div class="col-md-3"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="ib-res-cpf" placeholder="CPF ou CNPJ"></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-ib-resumo"></span> Consultar</button></div>
+                    </div>
+                </form>
+            </div></div>
+            <div id="ib-resumo-content"></div>
         </div>
     </div>
+</div>
+
+<!-- ================================================================ -->
+<!--                        SEMA-MT PANEL                             -->
+<!-- ================================================================ -->
+<div class="tab-pane fade" id="panel-sema">
+    <ul class="nav nav-tabs sub-tabs mb-3" role="tablist">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#sm-autos">Autos de Infracao</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-embargos">Areas Embargadas</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-resumo">Resumo Autuado</a></li>
+    </ul>
+    <div class="tab-content">
+        <!-- SM AUTOS -->
+        <div class="tab-pane fade show active" id="sm-autos">
+            <div class="card mb-3"><div class="card-body">
+                <form id="form-sm-autos" onsubmit="smSearchAutos(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label">Nome / Razao Social</label>
+                            <input type="text" class="form-control" id="sm-ai-nome" placeholder="Nome ou parte"></div>
+                        <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="sm-ai-cpf" placeholder="Apenas numeros"></div>
+                        <div class="col-md-2"><label class="form-label">Municipio</label>
+                            <input type="text" class="form-control" id="sm-ai-municipio" placeholder="Municipio"></div>
+                        <div class="col-md-2"><label class="form-label">N. Auto</label>
+                            <input type="text" class="form-control" id="sm-ai-num-auto" placeholder="Numero"></div>
+                        <div class="col-md-2"><label class="form-label">N. Processo</label>
+                            <input type="text" class="form-control" id="sm-ai-processo" placeholder="Processo"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-2"><label class="form-label">Fonte</label>
+                            <select class="form-select" id="sm-ai-fonte"><option value="">Todas</option>
+                                <option value="SIGA">SIGA (novo)</option><option value="LEGADO">Legado</option></select></div>
+                        <div class="col-md-1"><label class="form-label">De</label>
+                            <input type="number" class="form-control" id="sm-ai-ano-ini" min="2000" max="2026"></div>
+                        <div class="col-md-1"><label class="form-label">Ate</label>
+                            <input type="number" class="form-control" id="sm-ai-ano-fim" min="2000" max="2026"></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="sm-ai-limit"><option value="50" selected>50</option>
+                                <option value="100">100</option><option value="200">200</option><option value="500">500</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-sm-autos"></span> Pesquisar</button></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('form-sm-autos').reset()">Limpar</button></div>
+                    </div>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-sm-autos"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-sm-autos"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- SM EMBARGOS -->
+        <div class="tab-pane fade" id="sm-embargos">
+            <div class="card mb-3"><div class="card-body">
+                <form id="form-sm-embargos" onsubmit="smSearchEmbargos(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label">Nome / Razao Social</label>
+                            <input type="text" class="form-control" id="sm-te-nome" placeholder="Nome ou parte"></div>
+                        <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="sm-te-cpf" placeholder="Apenas numeros"></div>
+                        <div class="col-md-2"><label class="form-label">Municipio</label>
+                            <input type="text" class="form-control" id="sm-te-municipio" placeholder="Municipio"></div>
+                        <div class="col-md-2"><label class="form-label">N. Embargo</label>
+                            <input type="text" class="form-control" id="sm-te-num-embargo" placeholder="Numero"></div>
+                        <div class="col-md-2"><label class="form-label">N. Processo</label>
+                            <input type="text" class="form-control" id="sm-te-processo" placeholder="Processo"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-2"><label class="form-label">N. Auto Vinculado</label>
+                            <input type="text" class="form-control" id="sm-te-num-auto" placeholder="Auto"></div>
+                        <div class="col-md-2"><label class="form-label">Fonte</label>
+                            <select class="form-select" id="sm-te-fonte"><option value="">Todas</option>
+                                <option value="SIGA">SIGA (novo)</option><option value="LEGADO">Legado</option></select></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="sm-te-limit"><option value="50" selected>50</option>
+                                <option value="100">100</option><option value="200">200</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-sm-embargos"></span> Pesquisar</button></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('form-sm-embargos').reset()">Limpar</button></div>
+                    </div>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-sm-embargos"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-sm-embargos"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- SM RESUMO -->
+        <div class="tab-pane fade" id="sm-resumo">
+            <div class="card mb-3"><div class="card-body">
+                <form onsubmit="smSearchResumo(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-4"><label class="form-label">Nome</label>
+                            <input type="text" class="form-control" id="sm-res-nome" placeholder="Nome do autuado"></div>
+                        <div class="col-md-3"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="sm-res-cpf" placeholder="CPF ou CNPJ"></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-sm-resumo"></span> Consultar</button></div>
+                    </div>
+                </form>
+            </div></div>
+            <div id="sm-resumo-content"></div>
+        </div>
+    </div>
+</div>
+
+        </div><!-- /tab-content -->
+    </div><!-- /container -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     const UFS = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
     document.addEventListener('DOMContentLoaded', () => {
-        // Populate UF dropdowns
-        for (const sel of document.querySelectorAll('#ai-uf, #te-uf')) {
-            UFS.forEach(uf => {
-                const opt = document.createElement('option');
-                opt.value = uf; opt.textContent = uf;
-                sel.appendChild(opt);
-            });
-        }
-        // Load stats
+        document.querySelectorAll('.uf-select').forEach(sel => {
+            UFS.forEach(uf => { const o = document.createElement('option'); o.value = uf; o.textContent = uf; sel.appendChild(o); });
+        });
+        // IBAMA stats
         fetch('/api/stats').then(r => r.json()).then(d => {
-            document.getElementById('db-stats').textContent =
-                `${(d.autos_infracao||0).toLocaleString('pt-BR')} autos | ${(d.termos_embargo||0).toLocaleString('pt-BR')} embargos | ${d.db_size_mb}MB`;
+            const ibStats = `IBAMA: ${(d.autos_infracao||0).toLocaleString('pt-BR')} autos, ${(d.termos_embargo||0).toLocaleString('pt-BR')} embargos`;
+            fetch('/api/sema/stats').then(r => r.json()).then(s => {
+                const smStats = `SEMA-MT: ${(s.sema_autos_infracao||0).toLocaleString('pt-BR')} autos, ${(s.sema_areas_embargadas||0).toLocaleString('pt-BR')} embargos`;
+                document.getElementById('db-stats').textContent = ibStats + '  |  ' + smStats;
+            }).catch(() => { document.getElementById('db-stats').textContent = ibStats; });
         });
     });
 
-    function spin(id, on) {
-        document.getElementById(id).classList.toggle('active', on);
-    }
-
+    // ---- UTILS ----
+    function spin(id, on) { document.getElementById(id).classList.toggle('active', on); }
+    function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function fmtData(v) { if (!v) return '-'; if (v.length >= 10) return v.substring(0,10).split('-').reverse().join('/'); return v; }
     function fmtValor(v) {
+        if (!v || v === '' || v === '0') return '-';
+        try { const n = parseFloat(String(v).replace(/\./g,'').replace(',','.')); if (isNaN(n) || n === 0) return '-';
+            return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2}); } catch { return v; }
+    }
+    function fmtValorNum(v) {
         if (!v || v === '') return '-';
-        try {
-            const n = parseFloat(v.replace(/\./g, '').replace(',', '.'));
-            return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        } catch { return v; }
+        try { const n = parseFloat(v); if (isNaN(n) || n === 0) return '-';
+            return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2}); } catch { return v; }
     }
 
-    function fmtData(v) {
-        if (!v) return '-';
-        if (v.length >= 10) return v.substring(0, 10).split('-').reverse().join('/');
-        return v;
-    }
-
-    function esc(s) {
-        if (!s) return '';
-        const d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-    }
-
-    function clearForm(type) {
-        const form = document.getElementById('form-' + type);
-        if (form) form.reset();
-    }
-
-    // ---- AUTOS ----
-    function searchAutos() {
-        spin('spin-autos', true);
-        const p = new URLSearchParams();
-        const map = {nome:'ai-nome', cpf_cnpj:'ai-cpf', uf:'ai-uf', municipio:'ai-municipio',
-                     num_auto:'ai-num-auto', num_processo:'ai-processo', tipo_infracao:'ai-tipo',
-                     ano_inicio:'ai-ano-ini', ano_fim:'ai-ano-fim', limit:'ai-limit'};
-        for (const [k, id] of Object.entries(map)) {
-            const v = document.getElementById(id).value.trim();
-            if (v) p.set(k, v);
-        }
-        fetch('/api/autos?' + p).then(r => r.json()).then(d => {
-            spin('spin-autos', false);
-            if (d.error) { alert(d.error); return; }
-            document.getElementById('count-autos').textContent =
-                `${d.total} resultados encontrados (exibindo ${d.showing})`;
-            renderAutosTable(d.results);
-        }).catch(e => { spin('spin-autos', false); alert('Erro: ' + e); });
-    }
-
-    function renderAutosTable(rows) {
-        const t = document.getElementById('table-autos');
-        t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>Auto</th><th>Processo</th><th>Infrator</th><th>CPF/CNPJ</th>
-            <th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th>
-        </tr>`;
-        const tbody = t.querySelector('tbody');
-        tbody.innerHTML = '';
-        rows.forEach((r, i) => {
-            const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
-            const cancelado = r.SIT_CANCELADO === 'S';
-            const statusBadge = cancelado
-                ? '<span class="badge badge-cancelado">Cancelado</span>'
-                : `<span class="badge bg-info">${esc(r.DES_STATUS_FORMULARIO || 'Ativo')}</span>`;
-            const processo = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
-            tr.innerHTML = `
-                <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'auto', ${i})">+</button></td>
-                <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td>
-                <td><strong>${esc(r.NUM_AUTO_INFRACAO)}</strong>/${esc(r.SER_AUTO_INFRACAO)}</td>
-                <td>${esc(processo)}</td>
-                <td>${esc(r.NOME_INFRATOR)}</td>
-                <td>${esc(r.CPF_CNPJ_INFRATOR)}</td>
-                <td>${esc(r.TIPO_INFRACAO)}</td>
-                <td>${esc(r.UF)}</td>
-                <td>${esc(r.MUNICIPIO)}</td>
-                <td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td>
-                <td>${statusBadge}</td>`;
-            tr.dataset.record = JSON.stringify(r);
-            tbody.appendChild(tr);
-        });
-    }
-
-    // ---- EMBARGOS ----
-    function searchEmbargos() {
-        spin('spin-embargos', true);
-        const p = new URLSearchParams();
-        const map = {nome:'te-nome', cpf_cnpj:'te-cpf', uf:'te-uf', municipio:'te-municipio',
-                     num_tad:'te-num-tad', num_processo:'te-processo', num_auto:'te-num-auto', limit:'te-limit'};
-        for (const [k, id] of Object.entries(map)) {
-            const v = document.getElementById(id).value.trim();
-            if (v) p.set(k, v);
-        }
-        if (document.getElementById('te-ativos').checked) p.set('ativos_only', 'true');
-        fetch('/api/embargos?' + p).then(r => r.json()).then(d => {
-            spin('spin-embargos', false);
-            if (d.error) { alert(d.error); return; }
-            document.getElementById('count-embargos').textContent =
-                `${d.total} resultados encontrados (exibindo ${d.showing})`;
-            renderEmbargosTable(d.results);
-        }).catch(e => { spin('spin-embargos', false); alert('Erro: ' + e); });
-    }
-
-    function renderEmbargosTable(rows) {
-        const t = document.getElementById('table-embargos');
-        t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>CPF/CNPJ</th>
-            <th>UF</th><th>Municipio</th><th>Area (ha)</th><th>Situacao</th>
-        </tr>`;
-        const tbody = t.querySelector('tbody');
-        tbody.innerHTML = '';
-        rows.forEach((r, i) => {
-            const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
-            let sit;
-            if (r.SIT_CANCELADO === 'S') sit = '<span class="badge badge-cancelado">Cancelado</span>';
-            else if (r.SIT_DESEMBARGO) sit = '<span class="badge badge-desembargado">Desembargado</span>';
-            else sit = '<span class="badge badge-ativo">Embargado</span>';
-            tr.innerHTML = `
-                <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'embargo', ${i})">+</button></td>
-                <td>${fmtData(r.DAT_EMBARGO)}</td>
-                <td><strong>${esc(r.NUM_TAD)}</strong>/${esc(r.SER_TAD)}</td>
-                <td>${esc(r.NUM_PROCESSO || '')}</td>
-                <td>${esc(r.NOME_EMBARGADO)}</td>
-                <td>${esc(r.CPF_CNPJ_EMBARGADO)}</td>
-                <td>${esc(r.UF)}</td>
-                <td>${esc(r.MUNICIPIO)}</td>
-                <td>${esc(r.QTD_AREA_EMBARGADA)}</td>
-                <td>${sit}</td>`;
-            tr.dataset.record = JSON.stringify(r);
-            tbody.appendChild(tr);
-        });
-    }
-
-    // ---- BUSCA LIVRE ----
-    function searchTexto() {
-        spin('spin-texto', true);
-        const q = document.getElementById('fts-q').value.trim();
-        if (!q) { spin('spin-texto', false); return; }
-        const tabela = document.getElementById('fts-tabela').value;
-        const limit = document.getElementById('fts-limit').value;
-        fetch(`/api/texto?q=${encodeURIComponent(q)}&tabela=${tabela}&limit=${limit}`).then(r => r.json()).then(d => {
-            spin('spin-texto', false);
-            if (d.error) { alert(d.error + (d.hint ? '\n' + d.hint : '')); return; }
-            document.getElementById('count-texto').textContent =
-                `${d.total.toLocaleString('pt-BR')} resultados (exibindo ${d.showing})`;
-            if (tabela === 'autos') renderAutosTableIn('table-texto', d.results);
-            else renderEmbargosTableIn('table-texto', d.results);
-        }).catch(e => { spin('spin-texto', false); alert('Erro: ' + e); });
-    }
-
-    function renderAutosTableIn(tableId, rows) {
-        const t = document.getElementById(tableId);
-        t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>Auto</th><th>Processo</th><th>Infrator</th><th>UF</th><th>Municipio</th>
-            <th>Descricao</th><th>Valor</th>
-        </tr>`;
-        const tbody = t.querySelector('tbody');
-        tbody.innerHTML = '';
-        rows.forEach((r, i) => {
-            const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
-            const desc = (r.DES_AUTO_INFRACAO || '').substring(0, 80);
-            const processo = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
-            tr.innerHTML = `
-                <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'auto', ${i})">+</button></td>
-                <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td>
-                <td><strong>${esc(r.NUM_AUTO_INFRACAO)}</strong></td>
-                <td>${esc(processo)}</td>
-                <td>${esc(r.NOME_INFRATOR)}</td>
-                <td>${esc(r.UF)}</td>
-                <td>${esc(r.MUNICIPIO)}</td>
-                <td title="${esc(r.DES_AUTO_INFRACAO)}">${esc(desc)}${desc.length < (r.DES_AUTO_INFRACAO||'').length ? '...' : ''}</td>
-                <td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td>`;
-            tr.dataset.record = JSON.stringify(r);
-            tbody.appendChild(tr);
-        });
-    }
-
-    function renderEmbargosTableIn(tableId, rows) {
-        const t = document.getElementById(tableId);
-        t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>UF</th><th>Municipio</th>
-            <th>Descricao</th><th>Area</th>
-        </tr>`;
-        const tbody = t.querySelector('tbody');
-        tbody.innerHTML = '';
-        rows.forEach((r, i) => {
-            const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
-            const desc = (r.DES_TAD || '').substring(0, 80);
-            tr.innerHTML = `
-                <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'embargo', ${i})">+</button></td>
-                <td>${fmtData(r.DAT_EMBARGO)}</td>
-                <td><strong>${esc(r.NUM_TAD)}</strong></td>
-                <td>${esc(r.NUM_PROCESSO || '')}</td>
-                <td>${esc(r.NOME_EMBARGADO)}</td>
-                <td>${esc(r.UF)}</td>
-                <td>${esc(r.MUNICIPIO)}</td>
-                <td title="${esc(r.DES_TAD)}">${esc(desc)}${desc.length < (r.DES_TAD||'').length ? '...' : ''}</td>
-                <td>${esc(r.QTD_AREA_EMBARGADA)}</td>`;
-            tr.dataset.record = JSON.stringify(r);
-            tbody.appendChild(tr);
-        });
-    }
-
-    // ---- DETAIL TOGGLE ----
-    function toggleDetail(btn, type, idx) {
+    // ---- DETAIL TOGGLE (generic) ----
+    function toggleDetail(btn, rec) {
         const tr = btn.closest('tr');
         const next = tr.nextElementSibling;
-        if (next && next.classList.contains('detail-row')) {
-            next.remove();
-            btn.textContent = '+';
-            return;
-        }
+        if (next && next.classList.contains('detail-row')) { next.remove(); btn.textContent = '+'; return; }
         btn.textContent = '-';
-        const rec = JSON.parse(tr.dataset.record);
-        const detailTr = document.createElement('tr');
-        detailTr.classList.add('detail-row');
-
-        const skipFields = new Set(['SEQ_AUTO_INFRACAO','SEQ_TAD','NUM_PESSOA_INFRATOR','NUM_PESSOA_EMBARGO','COD_MUNICIPIO',
-            'NOME_INFRATOR_NORM','NOME_EMBARGADO_NORM','MUNICIPIO_NORM','CPF_CNPJ_NORM','NUM_PROCESSO_NORM']);
-        const labels = {
-            DAT_HORA_AUTO_INFRACAO: 'Data Auto', DT_LANCAMENTO: 'Lancamento', DT_FATO_INFRACIONAL: 'Data Fato',
-            NOME_INFRATOR: 'Infrator', CPF_CNPJ_INFRATOR: 'CPF/CNPJ', TP_PESSOA_INFRATOR: 'Tipo Pessoa',
-            VAL_AUTO_INFRACAO: 'Valor', TIPO_MULTA: 'Tipo Multa', TIPO_AUTO: 'Tipo Auto',
-            TIPO_INFRACAO: 'Tipo Infracao', NUM_AUTO_INFRACAO: 'N. Auto', SER_AUTO_INFRACAO: 'Serie',
-            UF: 'UF', MUNICIPIO: 'Municipio',
-            NUM_PROCESSO: 'Processo', NU_PROCESSO_FORMATADO: 'Processo Formatado',
-            DES_AUTO_INFRACAO: 'Descricao Auto', DES_INFRACAO: 'Descricao Infracao',
-            DES_LOCAL_INFRACAO: 'Local', GRAVIDADE_INFRACAO: 'Gravidade',
-            DS_ENQUADRAMENTO_ADMINISTRATIVO: 'Enquadramento Adm.',
-            DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO: 'Enquadramento Nao Adm.',
-            DS_ENQUADRAMENTO_COMPLEMENTAR: 'Enquadramento Complementar',
-            CLASSIFICACAO_AREA: 'Classificacao Area', UNIDADE_CONSERVACAO: 'Unid. Conservacao',
-            DS_BIOMAS_ATINGIDOS: 'Biomas', NUM_LATITUDE_AUTO: 'Latitude', NUM_LONGITUDE_AUTO: 'Longitude',
-            OPERACAO: 'Operacao', ORDEM_FISCALIZACAO: 'Ordem Fiscalizacao',
-            DES_STATUS_FORMULARIO: 'Status', SIT_CANCELADO: 'Cancelado',
-            FUNDAMENTACAO_MULTA: 'Fundamentacao', MOTIVACAO_CONDUTA: 'Motivacao',
-            EFEITO_MEIO_AMBIENTE: 'Efeito Meio Ambiente', EFEITO_SAUDE_PUBLICA: 'Efeito Saude Publica',
-            ULTIMA_ATUALIZACAO_RELATORIO: 'Ultima Atualizacao',
-            DAT_EMBARGO: 'Data Embargo', DAT_DESEMBARGO: 'Data Desembargo',
-            NOME_EMBARGADO: 'Embargado', CPF_CNPJ_EMBARGADO: 'CPF/CNPJ',
-            NUM_TAD: 'N. TAD', SER_TAD: 'Serie',
-            DES_TAD: 'Descricao', DES_LOCALIZACAO: 'Localizacao',
-            QTD_AREA_EMBARGADA: 'Area Embargada', TIPO_AREA: 'Tipo Area',
-            SIT_DESEMBARGO: 'Sit. Desembargo', TIPO_DESEMBARGO: 'Tipo Desembargo',
-            DES_DESEMBARGO: 'Desc. Desembargo',
-            NOME_IMOVEL: 'Imovel', DETER_PRODES: 'DETER/PRODES',
-        };
-
+        const r = JSON.parse(rec);
+        const skip = new Set(['NOME_NORM','MUNICIPIO_NORM','CPF_CNPJ_NORM','NUM_PROCESSO_NORM',
+            'SEQ_AUTO_INFRACAO','SEQ_TAD','NUM_PESSOA_INFRATOR','NUM_PESSOA_EMBARGO','COD_MUNICIPIO']);
         let html = '<td colspan="100%" class="detail-content"><div class="row">';
-        let col = 0;
-        for (const [k, v] of Object.entries(rec)) {
-            if (skipFields.has(k) || !v || v === '') continue;
-            const label = labels[k] || k;
-            html += `<div class="col-md-4 mb-1"><dt>${esc(label)}</dt><dd>${esc(v)}</dd></div>`;
-            col++;
+        for (const [k, v] of Object.entries(r)) {
+            if (skip.has(k) || !v || v === '') continue;
+            html += `<div class="col-md-4 mb-1"><dt>${esc(k.replace(/_/g,' '))}</dt><dd>${esc(String(v))}</dd></div>`;
         }
         html += '</div></td>';
-        detailTr.innerHTML = html;
+        const detailTr = document.createElement('tr'); detailTr.classList.add('detail-row'); detailTr.innerHTML = html;
         tr.after(detailTr);
     }
 
-    // ---- RESUMO ----
-    function searchResumo() {
-        spin('spin-resumo', true);
+    // ================================================================
+    //                    IBAMA FUNCTIONS
+    // ================================================================
+    function ibSearchAutos() {
+        spin('spin-ib-autos', true);
         const p = new URLSearchParams();
-        const nome = document.getElementById('res-nome').value.trim();
-        const cpf = document.getElementById('res-cpf').value.trim();
-        if (nome) p.set('nome', nome);
-        if (cpf) p.set('cpf_cnpj', cpf);
-        if (!nome && !cpf) { spin('spin-resumo', false); alert('Informe nome ou CPF/CNPJ'); return; }
-
-        fetch('/api/resumo?' + p).then(r => r.json()).then(d => {
-            spin('spin-resumo', false);
+        const map = {nome:'ib-ai-nome',cpf_cnpj:'ib-ai-cpf',uf:'ib-ai-uf',municipio:'ib-ai-municipio',
+            num_auto:'ib-ai-num-auto',num_processo:'ib-ai-processo',tipo_infracao:'ib-ai-tipo',
+            ano_inicio:'ib-ai-ano-ini',ano_fim:'ib-ai-ano-fim',limit:'ib-ai-limit'};
+        for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
+        fetch('/api/autos?'+p).then(r=>r.json()).then(d => {
+            spin('spin-ib-autos',false);
             if (d.error) { alert(d.error); return; }
-            renderResumo(d);
-        }).catch(e => { spin('spin-resumo', false); alert('Erro: ' + e); });
+            document.getElementById('count-ib-autos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-ib-autos');
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Data</th><th>Auto</th><th>Processo</th><th>Infrator</th><th>CPF/CNPJ</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor = 'pointer';
+                const cancel = r.SIT_CANCELADO==='S';
+                const st = cancel ? '<span class="badge badge-cancelado">Cancelado</span>' : `<span class="badge bg-info">${esc(r.DES_STATUS_FORMULARIO||'Ativo')}</span>`;
+                const proc = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
+                tr.dataset.record = JSON.stringify(r);
+                tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                    <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td><strong>${esc(r.NUM_AUTO_INFRACAO)}</strong>/${esc(r.SER_AUTO_INFRACAO)}</td>
+                    <td>${esc(proc)}</td><td>${esc(r.NOME_INFRATOR)}</td><td>${esc(r.CPF_CNPJ_INFRATOR)}</td>
+                    <td>${esc(r.TIPO_INFRACAO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td>
+                    <td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td><td>${st}</td>`;
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-ib-autos',false); alert('Erro: '+e); });
     }
 
-    function renderResumo(d) {
-        const ai = d.autos_infracao;
-        const te = d.termos_embargo;
-        let html = '<div class="row g-3 mb-4">';
+    function ibSearchEmbargos() {
+        spin('spin-ib-embargos', true);
+        const p = new URLSearchParams();
+        const map = {nome:'ib-te-nome',cpf_cnpj:'ib-te-cpf',uf:'ib-te-uf',municipio:'ib-te-municipio',
+            num_tad:'ib-te-num-tad',num_processo:'ib-te-processo',num_auto:'ib-te-num-auto',limit:'ib-te-limit'};
+        for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
+        if (document.getElementById('ib-te-ativos').checked) p.set('ativos_only','true');
+        fetch('/api/embargos?'+p).then(r=>r.json()).then(d => {
+            spin('spin-ib-embargos',false);
+            if (d.error) { alert(d.error); return; }
+            document.getElementById('count-ib-embargos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-ib-embargos');
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>CPF/CNPJ</th><th>UF</th><th>Municipio</th><th>Area (ha)</th><th>Situacao</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor='pointer';
+                let sit; if (r.SIT_CANCELADO==='S') sit='<span class="badge badge-cancelado">Cancelado</span>';
+                else if (r.SIT_DESEMBARGO) sit='<span class="badge badge-desembargado">Desembargado</span>';
+                else sit='<span class="badge badge-ativo">Embargado</span>';
+                tr.dataset.record = JSON.stringify(r);
+                tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                    <td>${fmtData(r.DAT_EMBARGO)}</td><td><strong>${esc(r.NUM_TAD)}</strong>/${esc(r.SER_TAD)}</td>
+                    <td>${esc(r.NUM_PROCESSO||'')}</td><td>${esc(r.NOME_EMBARGADO)}</td><td>${esc(r.CPF_CNPJ_EMBARGADO)}</td>
+                    <td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${sit}</td>`;
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-ib-embargos',false); alert('Erro: '+e); });
+    }
 
-        // Cards
-        html += `<div class="col-md-3"><div class="card stats-card">
-            <h2>${ai.total_autos || 0}</h2><div class="text-muted">Autos de Infracao</div>
-            <small>${ai.autos_ativos || 0} ativos / ${ai.autos_cancelados || 0} cancelados</small>
-        </div></div>`;
-        html += `<div class="col-md-3"><div class="card stats-card">
-            <h2>${te.total_embargos || 0}</h2><div class="text-muted">Termos de Embargo</div>
-            <small>${te.embargos_ativos || 0} ativos / ${te.embargos_cancelados || 0} cancelados</small>
-        </div></div>`;
-        html += `<div class="col-md-3"><div class="card stats-card">
-            <h2>${esc(ai.valor_total || 'N/A')}</h2><div class="text-muted">Valor Total Multas</div>
-            <small>autos ativos</small>
-        </div></div>`;
-        html += `<div class="col-md-3"><div class="card stats-card">
-            <h2>${fmtData(ai.primeiro_auto)} - ${fmtData(ai.ultimo_auto)}</h2>
-            <div class="text-muted">Periodo</div>
-            <small>UFs: ${esc(ai.ufs || '-')}</small>
-        </div></div>`;
-        html += '</div>';
+    function ibSearchTexto() {
+        spin('spin-ib-texto', true);
+        const q = document.getElementById('ib-fts-q').value.trim();
+        if (!q) { spin('spin-ib-texto',false); return; }
+        const tabela = document.getElementById('ib-fts-tabela').value;
+        const limit = document.getElementById('ib-fts-limit').value;
+        fetch(`/api/texto?q=${encodeURIComponent(q)}&tabela=${tabela}&limit=${limit}`).then(r=>r.json()).then(d => {
+            spin('spin-ib-texto',false);
+            if (d.error) { alert(d.error + (d.hint ? '\n'+d.hint : '')); return; }
+            document.getElementById('count-ib-texto').textContent = `${d.total.toLocaleString('pt-BR')} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-ib-texto');
+            t.querySelector('thead').innerHTML = tabela==='autos'
+                ? '<tr><th></th><th>Data</th><th>Auto</th><th>Infrator</th><th>UF</th><th>Municipio</th><th>Descricao</th><th>Valor</th></tr>'
+                : '<tr><th></th><th>Data</th><th>TAD</th><th>Embargado</th><th>UF</th><th>Municipio</th><th>Descricao</th><th>Area</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
+                if (tabela==='autos') {
+                    const desc = (r.DES_AUTO_INFRACAO||'').substring(0,80);
+                    tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                        <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td><strong>${esc(r.NUM_AUTO_INFRACAO)}</strong></td>
+                        <td>${esc(r.NOME_INFRATOR)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td>
+                        <td title="${esc(r.DES_AUTO_INFRACAO)}">${esc(desc)}...</td><td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td>`;
+                } else {
+                    const desc = (r.DES_TAD||'').substring(0,80);
+                    tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                        <td>${fmtData(r.DAT_EMBARGO)}</td><td><strong>${esc(r.NUM_TAD)}</strong></td>
+                        <td>${esc(r.NOME_EMBARGADO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td>
+                        <td title="${esc(r.DES_TAD)}">${esc(desc)}...</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td>`;
+                }
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-ib-texto',false); alert('Erro: '+e); });
+    }
 
-        // Tipos
-        if (ai.tipos) {
-            html += `<div class="card mb-3"><div class="card-body">
-                <strong>Tipos de infracao:</strong> ${esc(ai.tipos)}<br>
-                <strong>Municipios com embargo:</strong> ${esc(te.municipios || '-')}
-            </div></div>`;
-        }
+    function ibSearchResumo() {
+        spin('spin-ib-resumo', true);
+        const p = new URLSearchParams();
+        const nome = document.getElementById('ib-res-nome').value.trim();
+        const cpf = document.getElementById('ib-res-cpf').value.trim();
+        if (nome) p.set('nome',nome); if (cpf) p.set('cpf_cnpj',cpf);
+        if (!nome && !cpf) { spin('spin-ib-resumo',false); alert('Informe nome ou CPF/CNPJ'); return; }
+        fetch('/api/resumo?'+p).then(r=>r.json()).then(d => {
+            spin('spin-ib-resumo',false);
+            if (d.error) { alert(d.error); return; }
+            renderIbResumo(d);
+        }).catch(e => { spin('spin-ib-resumo',false); alert('Erro: '+e); });
+    }
 
-        // Status
-        if (ai.status_formulario && Object.keys(ai.status_formulario).length) {
-            html += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Status dos Autos</h5><div class="row">';
-            for (const [status, count] of Object.entries(ai.status_formulario)) {
-                html += `<div class="col-md-3 mb-1"><span class="badge bg-secondary">${count}</span> ${esc(status)}</div>`;
-            }
-            html += '</div></div></div>';
-        }
-
-        // Ultimos autos
+    function renderIbResumo(d) {
+        const ai = d.autos_infracao, te = d.termos_embargo;
+        let h = '<div class="row g-3 mb-4">';
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${ai.total_autos||0}</h2><div class="text-muted">Autos</div><small>${ai.autos_ativos||0} ativos / ${ai.autos_cancelados||0} cancelados</small></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${te.total_embargos||0}</h2><div class="text-muted">Embargos</div><small>${te.embargos_ativos||0} ativos</small></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${esc(ai.valor_total||'N/A')}</h2><div class="text-muted">Valor Total</div></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${fmtData(ai.primeiro_auto)} - ${fmtData(ai.ultimo_auto)}</h2><div class="text-muted">Periodo</div><small>UFs: ${esc(ai.ufs||'-')}</small></div></div>`;
+        h += '</div>';
         if (d.ultimos_autos && d.ultimos_autos.length) {
-            html += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Ultimos Autos Ativos</h5>';
-            html += '<table class="table table-sm"><thead><tr><th>Data</th><th>Auto</th><th>Processo</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>';
-            d.ultimos_autos.forEach(r => {
-                const processo = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
-                html += `<tr>
-                    <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td>
-                    <td>${esc(r.NUM_AUTO_INFRACAO)}</td>
-                    <td>${esc(processo)}</td>
-                    <td>${esc(r.TIPO_INFRACAO)}</td>
-                    <td>${esc(r.UF)}</td>
-                    <td>${esc(r.MUNICIPIO)}</td>
-                    <td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td>
-                    <td>${esc(r.DES_STATUS_FORMULARIO)}</td>
-                </tr>`;
-            });
-            html += '</tbody></table></div></div>';
+            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Ultimos Autos</h5><table class="table table-sm"><thead><tr><th>Data</th><th>Auto</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>';
+            d.ultimos_autos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td>${esc(r.NUM_AUTO_INFRACAO)}</td><td>${esc(r.TIPO_INFRACAO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td><td>${esc(r.DES_STATUS_FORMULARIO)}</td></tr>`; });
+            h += '</tbody></table></div></div>';
         }
-
-        // Embargos ativos
         if (d.embargos_ativos && d.embargos_ativos.length) {
-            html += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Embargos Ativos</h5>';
-            html += '<table class="table table-sm"><thead><tr><th>Data</th><th>TAD</th><th>Processo</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>';
-            d.embargos_ativos.forEach(r => {
-                html += `<tr>
-                    <td>${fmtData(r.DAT_EMBARGO)}</td>
-                    <td>${esc(r.NUM_TAD)}</td>
-                    <td>${esc(r.NUM_PROCESSO || '')}</td>
-                    <td>${esc(r.UF)}</td>
-                    <td>${esc(r.MUNICIPIO)}</td>
-                    <td>${esc(r.QTD_AREA_EMBARGADA)}</td>
-                    <td>${esc(r.DES_LOCALIZACAO)}</td>
-                </tr>`;
-            });
-            html += '</tbody></table></div></div>';
+            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Embargos Ativos</h5><table class="table table-sm"><thead><tr><th>Data</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>';
+            d.embargos_ativos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_EMBARGO)}</td><td>${esc(r.NUM_TAD)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${esc(r.DES_LOCALIZACAO)}</td></tr>`; });
+            h += '</tbody></table></div></div>';
         }
+        document.getElementById('ib-resumo-content').innerHTML = h;
+    }
 
-        document.getElementById('resumo-content').innerHTML = html;
+    // ================================================================
+    //                    SEMA-MT FUNCTIONS
+    // ================================================================
+    function smSearchAutos() {
+        spin('spin-sm-autos', true);
+        const p = new URLSearchParams();
+        const map = {nome:'sm-ai-nome',cpf_cnpj:'sm-ai-cpf',municipio:'sm-ai-municipio',
+            num_auto:'sm-ai-num-auto',num_processo:'sm-ai-processo',fonte:'sm-ai-fonte',
+            ano_inicio:'sm-ai-ano-ini',ano_fim:'sm-ai-ano-fim',limit:'sm-ai-limit'};
+        for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
+        fetch('/api/sema/autos?'+p).then(r=>r.json()).then(d => {
+            spin('spin-sm-autos',false);
+            if (d.error) { alert(d.error); return; }
+            document.getElementById('count-sm-autos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-sm-autos');
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Auto</th><th>Processo</th><th>Nome/Razao Social</th><th>CPF/CNPJ</th><th>Municipio</th><th>Valor Multa</th><th>Situacao</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
+                const fonteBadge = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEGADO</span>';
+                tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                    <td>${fonteBadge}</td>
+                    <td>${fmtData(r.DATA_AUTO)}</td><td><strong>${esc(r.NUMERO_AUTO_INFRACAO)}</strong></td>
+                    <td>${esc(r.NUMERO_PROCESSO)}</td><td>${esc(r.NOME_RAZAO_SOCIAL)}</td><td>${esc(r.CPF_CNPJ)}</td>
+                    <td>${esc(r.MUNICIPIO)}</td><td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td><td>${esc(r.SITUACAO||'')}</td>`;
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-sm-autos',false); alert('Erro: '+e); });
+    }
+
+    function smSearchEmbargos() {
+        spin('spin-sm-embargos', true);
+        const p = new URLSearchParams();
+        const map = {nome:'sm-te-nome',cpf_cnpj:'sm-te-cpf',municipio:'sm-te-municipio',
+            num_embargo:'sm-te-num-embargo',num_processo:'sm-te-processo',num_auto:'sm-te-num-auto',
+            fonte:'sm-te-fonte',limit:'sm-te-limit'};
+        for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
+        fetch('/api/sema/embargos?'+p).then(r=>r.json()).then(d => {
+            spin('spin-sm-embargos',false);
+            if (d.error) { alert(d.error); return; }
+            document.getElementById('count-sm-embargos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-sm-embargos');
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Embargo</th><th>Auto</th><th>Processo</th><th>Nome</th><th>CPF/CNPJ</th><th>Municipio</th><th>Propriedade</th><th>Area (ha)</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
+                const fonteBadge = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEGADO</span>';
+                tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                    <td>${fonteBadge}</td>
+                    <td>${fmtData(r.DATA_EMBARGO)}</td><td><strong>${esc(r.NUMERO_TERMO_EMBARGO)}</strong></td>
+                    <td>${esc(r.NUMERO_AUTO_INFRACAO)}</td><td>${esc(r.NUMERO_PROCESSO)}</td>
+                    <td>${esc(r.NOME_RAZAO_SOCIAL)}</td><td>${esc(r.CPF_CNPJ)}</td>
+                    <td>${esc(r.MUNICIPIO)}</td><td>${esc(r.PROPRIEDADE)}</td><td>${esc(r.AREA_HA)}</td>`;
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-sm-embargos',false); alert('Erro: '+e); });
+    }
+
+    function smSearchResumo() {
+        spin('spin-sm-resumo', true);
+        const p = new URLSearchParams();
+        const nome = document.getElementById('sm-res-nome').value.trim();
+        const cpf = document.getElementById('sm-res-cpf').value.trim();
+        if (nome) p.set('nome',nome); if (cpf) p.set('cpf_cnpj',cpf);
+        if (!nome && !cpf) { spin('spin-sm-resumo',false); alert('Informe nome ou CPF/CNPJ'); return; }
+        fetch('/api/sema/resumo?'+p).then(r=>r.json()).then(d => {
+            spin('spin-sm-resumo',false);
+            if (d.error) { alert(d.error); return; }
+            renderSmResumo(d);
+        }).catch(e => { spin('spin-sm-resumo',false); alert('Erro: '+e); });
+    }
+
+    function renderSmResumo(d) {
+        const ai = d.autos_infracao, te = d.areas_embargadas;
+        let h = '<div class="row g-3 mb-4">';
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${ai.total_autos||0}</h2><div class="text-muted">Autos de Infracao</div></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${te.total_embargos||0}</h2><div class="text-muted">Areas Embargadas</div></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${esc(ai.valor_total||'N/A')}</h2><div class="text-muted">Valor Total Multas</div></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${fmtData(ai.primeiro_auto)} - ${fmtData(ai.ultimo_auto)}</h2><div class="text-muted">Periodo</div><small>${esc(ai.municipios||'')}</small></div></div>`;
+        h += '</div>';
+        if (d.ultimos_autos && d.ultimos_autos.length) {
+            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Ultimos Autos SEMA-MT</h5><table class="table table-sm"><thead><tr><th>Fonte</th><th>Data</th><th>Auto</th><th>Municipio</th><th>Atividade</th><th>Valor</th><th>Situacao</th></tr></thead><tbody>';
+            d.ultimos_autos.forEach(r => {
+                const fb = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEG</span>';
+                h += `<tr><td>${fb}</td><td>${fmtData(r.DATA_AUTO)}</td><td>${esc(r.NUMERO_AUTO_INFRACAO)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.ATIVIDADE)}</td><td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td><td>${esc(r.SITUACAO||'')}</td></tr>`;
+            });
+            h += '</tbody></table></div></div>';
+        }
+        if (d.embargos_recentes && d.embargos_recentes.length) {
+            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Embargos SEMA-MT</h5><table class="table table-sm"><thead><tr><th>Fonte</th><th>Data</th><th>Embargo</th><th>Municipio</th><th>Propriedade</th><th>Area</th><th>Situacao</th></tr></thead><tbody>';
+            d.embargos_recentes.forEach(r => {
+                const fb = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEG</span>';
+                h += `<tr><td>${fb}</td><td>${fmtData(r.DATA_EMBARGO)}</td><td>${esc(r.NUMERO_TERMO_EMBARGO)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.PROPRIEDADE)}</td><td>${esc(r.AREA_HA)}</td><td>${esc(r.SITUACAO||'')}</td></tr>`;
+            });
+            h += '</tbody></table></div></div>';
+        }
+        document.getElementById('sm-resumo-content').innerHTML = h;
     }
     </script>
 </body>

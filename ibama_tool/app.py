@@ -7,6 +7,7 @@ from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 
 import consulta
+import consulta_sema
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-me")
@@ -118,6 +119,71 @@ def api_resumo():
     return jsonify(consulta.resumo_autuado(nome=nome, cpf_cnpj=cpf_cnpj))
 
 
+# ============================================================
+# SEMA-MT API Routes (independent from IBAMA)
+# ============================================================
+
+@app.route("/api/sema/stats")
+@login_required
+def api_sema_stats():
+    try:
+        return jsonify(consulta_sema.stats())
+    except Exception as e:
+        return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
+
+
+@app.route("/api/sema/autos")
+@login_required
+def api_sema_autos():
+    try:
+        params = {
+            "nome": request.args.get("nome") or None,
+            "cpf_cnpj": request.args.get("cpf_cnpj") or None,
+            "municipio": request.args.get("municipio") or None,
+            "num_auto": request.args.get("num_auto") or None,
+            "num_processo": request.args.get("num_processo") or None,
+            "fonte": request.args.get("fonte") or None,
+            "ano_inicio": request.args.get("ano_inicio") or None,
+            "ano_fim": request.args.get("ano_fim") or None,
+            "limit": int(request.args.get("limit", 50)),
+        }
+        return jsonify(consulta_sema.search_autos(**params))
+    except Exception as e:
+        return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
+
+
+@app.route("/api/sema/embargos")
+@login_required
+def api_sema_embargos():
+    try:
+        params = {
+            "nome": request.args.get("nome") or None,
+            "cpf_cnpj": request.args.get("cpf_cnpj") or None,
+            "municipio": request.args.get("municipio") or None,
+            "num_embargo": request.args.get("num_embargo") or None,
+            "num_processo": request.args.get("num_processo") or None,
+            "num_auto": request.args.get("num_auto") or None,
+            "fonte": request.args.get("fonte") or None,
+            "limit": int(request.args.get("limit", 50)),
+        }
+        return jsonify(consulta_sema.search_embargos(**params))
+    except Exception as e:
+        return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
+
+
+@app.route("/api/sema/resumo")
+@login_required
+def api_sema_resumo():
+    nome = request.args.get("nome") or None
+    cpf_cnpj = request.args.get("cpf_cnpj") or None
+    if not nome and not cpf_cnpj:
+        return jsonify({"error": "Informe 'nome' ou 'cpf_cnpj'"})
+    try:
+        return jsonify(consulta_sema.resumo_autuado(nome=nome, cpf_cnpj=cpf_cnpj))
+    except Exception as e:
+        return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
+
+
 def warmup_db():
     """Pre-load DB pages into OS cache on startup for faster first queries."""
     try:
@@ -125,9 +191,19 @@ def warmup_db():
         conn.execute("SELECT COUNT(*) FROM autos_infracao").fetchone()
         conn.execute("SELECT COUNT(*) FROM termos_embargo").fetchone()
         conn.close()
-        print("DB warmup OK")
+        print("IBAMA DB warmup OK")
     except Exception as e:
-        print(f"DB warmup skip: {e}")
+        print(f"IBAMA DB warmup skip: {e}")
+
+    # SEMA warmup (independent - won't break if sema.db doesn't exist)
+    try:
+        conn = consulta_sema.get_conn()
+        conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()
+        conn.execute("SELECT COUNT(*) FROM sema_areas_embargadas").fetchone()
+        conn.close()
+        print("SEMA DB warmup OK")
+    except Exception as e:
+        print(f"SEMA DB warmup skip: {e}")
 
 
 warmup_db()
