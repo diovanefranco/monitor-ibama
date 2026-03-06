@@ -6,6 +6,9 @@ then rebuilds the SQLite database.
 
 Resilience: If SEMA server is down, keeps previous day's data intact.
 Runs independently from IBAMA module (separate DB, separate files).
+
+Robust retry: warmup probe + 5 attempts per page with exponential backoff
++ up to 2 full global retries if all layers fail.
 """
 import os, sys, subprocess, json, time, ssl
 from datetime import datetime
@@ -50,6 +53,9 @@ LAYERS = {
 }
 
 PAGE_SIZE = 5000
+MAX_PAGE_RETRIES = 5       # retries per page request
+MAX_GLOBAL_RETRIES = 2     # full retry of all layers if everything fails
+WARMUP_RETRIES = 6         # warmup probes before giving up (6 x 15s = 90s max)
 
 
 def check_update_needed(max_age_hours=24):
@@ -61,6 +67,61 @@ def check_update_needed(max_age_hours=24):
         age_hours = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(fpath))).total_seconds() / 3600
         if age_hours > max_age_hours:
             return True
+    return False
+
+
+def warmup_geoserver():
+    """Probe the GeoServer to ensure it's responding before heavy downloads.
+    Returns True if server is alive, False if unreachable after all retries."""
+    probe_url = (
+        f"{WFS_BASE}?service=WFS&version=1.0.0"
+        f"&authkey={AUTH_KEY}"
+        f"&request=GetFeature"
+        f"&typeName=Geoportal:AUTOS_DE_INFRACAO_SIGA_PONTO"
+        f"&outputFormat=application/json"
+        f"&maxFeatures=1"
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Monitor-SEMA/1.0)",
+        "Accept": "application/json",
+    }
+
+    for attempt in range(1, WARMUP_RETRIES + 1):
+        print(f"  Warmup probe {attempt}/{WARMUP_RETRIES}...", end=" ")
+        try:
+            req = Request(probe_url, headers=headers)
+            resp = urlopen(req, timeout=30, context=_SSL_CTX)
+            raw = resp.read()
+            if raw and not raw.startswith(b'<?xml'):
+                data = json.loads(raw)
+                if data.get("features"):
+                    print("OK - GeoServer is responding")
+                    return True
+                else:
+                    print("empty response")
+            else:
+                print("XML error")
+        except Exception as e:
+            print(f"failed ({type(e).__name__})")
+
+        # Also try curl as fallback
+        try:
+            result = subprocess.run(
+                ["curl", "-fsSL", "-k", "--max-time", "30", probe_url],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0 and result.stdout and '"features"' in result.stdout:
+                print(f"  Warmup OK via curl")
+                return True
+        except Exception:
+            pass
+
+        if attempt < WARMUP_RETRIES:
+            wait = 15
+            print(f"  Waiting {wait}s before next probe...")
+            time.sleep(wait)
+
+    print(f"  WARNING: GeoServer did not respond after {WARMUP_RETRIES} probes")
     return False
 
 
@@ -119,16 +180,17 @@ def download_wfs_layer(layer_name, output_path, sort_by=None):
             url += f"&sortBy={sort_by}"
 
         data = None
-        for attempt in range(3):
+        for attempt in range(MAX_PAGE_RETRIES):
             data = _fetch_json(url, headers)
             if data:
                 break
-            print(f"    Attempt {attempt+1}/3 failed for page {start_index // PAGE_SIZE + 1}")
-            if attempt < 2:
-                time.sleep(5 * (attempt + 1))
+            wait = min(10 * (attempt + 1), 60)  # 10s, 20s, 30s, 40s, 50s
+            print(f"    Attempt {attempt+1}/{MAX_PAGE_RETRIES} failed for page {start_index // PAGE_SIZE + 1}, waiting {wait}s...")
+            if attempt < MAX_PAGE_RETRIES - 1:
+                time.sleep(wait)
 
         if data is None:
-            print(f"  ERRO: Failed to download {layer_name} (server may be down)")
+            print(f"  ERRO: Failed to download {layer_name} after {MAX_PAGE_RETRIES} attempts")
             print(f"  Keeping previous data if available.")
             return 0
 
@@ -190,6 +252,27 @@ def rebuild_db():
     return result.returncode == 0
 
 
+def download_all_layers():
+    """Download all SEMA layers. Returns number of successfully downloaded layers."""
+    success_count = 0
+    for fname, cfg in LAYERS.items():
+        fpath = os.path.join(DATA_DIR, fname)
+
+        # Skip if file is recent enough
+        if os.path.exists(fpath):
+            age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(fpath))).total_seconds() / 3600
+            if age <= 24:
+                print(f"  {fname}: OK ({age:.0f}h old)")
+                success_count += 1
+                continue
+
+        count = download_wfs_layer(cfg["layer"], fpath, sort_by=cfg.get("sort_by"))
+        if count > 0:
+            success_count += 1
+
+    return success_count
+
+
 if __name__ == "__main__":
     print(f"=== SEMA-MT Auto-Update ===")
     print(f"Data dir: {DATA_DIR}")
@@ -199,25 +282,36 @@ if __name__ == "__main__":
         print("Arquivos atualizados (< 24h). Nada a fazer.")
         sys.exit(0)
 
-    print("Downloading SEMA-MT data from GeoServer WFS...\n")
-    any_updated = False
+    # Warmup: probe GeoServer before starting heavy downloads
+    print("Checking GeoServer availability...")
+    server_alive = warmup_geoserver()
 
-    for fname, cfg in LAYERS.items():
-        fpath = os.path.join(DATA_DIR, fname)
+    if not server_alive:
+        # Try anyway - sometimes the probe fails but downloads work
+        print("Server probe failed, but will attempt downloads anyway...\n")
 
-        # Skip if file is recent enough
-        if os.path.exists(fpath):
-            age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(fpath))).total_seconds() / 3600
-            if age <= 24:
-                print(f"  {fname}: OK ({age:.0f}h old)")
-                continue
+    # Global retry loop: if all downloads fail, wait and try again
+    for global_attempt in range(1, MAX_GLOBAL_RETRIES + 1):
+        print(f"\nDownloading SEMA-MT data (attempt {global_attempt}/{MAX_GLOBAL_RETRIES})...\n")
 
-        count = download_wfs_layer(cfg["layer"], fpath, sort_by=cfg.get("sort_by"))
-        if count > 0:
-            any_updated = True
+        success = download_all_layers()
+
+        if success > 0:
+            print(f"\n{success}/{len(LAYERS)} layers downloaded successfully.")
+            break
+        else:
+            if global_attempt < MAX_GLOBAL_RETRIES:
+                wait = 30 * global_attempt
+                print(f"\nAll layers failed. Waiting {wait}s before global retry {global_attempt+1}...")
+                time.sleep(wait)
+            else:
+                print(f"\nAll layers failed after {MAX_GLOBAL_RETRIES} global attempts.")
 
     # Only rebuild if we have at least some data files
-    has_any_data = any(os.path.exists(os.path.join(DATA_DIR, f)) for f in LAYERS)
+    has_any_data = any(
+        os.path.exists(os.path.join(DATA_DIR, f)) and os.path.getsize(os.path.join(DATA_DIR, f)) > 0
+        for f in LAYERS
+    )
     if has_any_data:
         rebuild_db()
     else:
