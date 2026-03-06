@@ -2,7 +2,7 @@
 """
 IBAMA Monitor - Web interface for searching IBAMA enforcement data.
 """
-import os
+import os, sys, subprocess, threading
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 
@@ -184,8 +184,46 @@ def api_sema_resumo():
         return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
 
 
+_sema_rebuilding = False  # flag to prevent concurrent rebuilds
+
+
+def _rebuild_sema_background():
+    """Run SEMA auto-update in background thread to self-heal empty DB."""
+    global _sema_rebuilding
+    _sema_rebuilding = True
+    print("SEMA self-heal: starting background download...")
+    try:
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auto_update_sema.py")
+        result = subprocess.run(
+            [sys.executable, "-u", script],
+            capture_output=True, text=True, timeout=600  # 10 min max
+        )
+        print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+        if result.returncode != 0 and result.stderr:
+            print(f"SEMA self-heal stderr: {result.stderr[-300:]}")
+
+        # Verify it worked
+        try:
+            conn = consulta_sema.get_conn()
+            n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
+            conn.close()
+            if n > 0:
+                print(f"SEMA self-heal SUCCESS: {n} autos loaded")
+            else:
+                print("SEMA self-heal: DB still empty after rebuild")
+        except Exception:
+            print("SEMA self-heal: DB still not available after rebuild")
+    except subprocess.TimeoutExpired:
+        print("SEMA self-heal: timeout after 10 minutes")
+    except Exception as e:
+        print(f"SEMA self-heal error: {e}")
+    finally:
+        _sema_rebuilding = False
+
+
 def warmup_db():
-    """Pre-load DB pages into OS cache on startup for faster first queries."""
+    """Pre-load DB pages into OS cache on startup for faster first queries.
+    If SEMA DB is missing or empty, starts background self-heal."""
     try:
         conn = consulta.get_conn()
         conn.execute("SELECT COUNT(*) FROM autos_infracao").fetchone()
@@ -196,14 +234,25 @@ def warmup_db():
         print(f"IBAMA DB warmup skip: {e}")
 
     # SEMA warmup (independent - won't break if sema.db doesn't exist)
+    sema_ok = False
     try:
         conn = consulta_sema.get_conn()
-        conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()
+        n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
         conn.execute("SELECT COUNT(*) FROM sema_areas_embargadas").fetchone()
         conn.close()
-        print("SEMA DB warmup OK")
+        if n > 0:
+            sema_ok = True
+            print(f"SEMA DB warmup OK ({n} autos)")
+        else:
+            print("SEMA DB warmup: table exists but is empty")
     except Exception as e:
         print(f"SEMA DB warmup skip: {e}")
+
+    # Self-heal: if SEMA DB is missing/empty, rebuild in background
+    if not sema_ok:
+        print("SEMA DB not available - launching background self-heal...")
+        t = threading.Thread(target=_rebuild_sema_background, daemon=True)
+        t.start()
 
 
 warmup_db()
