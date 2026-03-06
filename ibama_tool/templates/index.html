@@ -368,7 +368,7 @@
     function renderAutosTable(rows) {
         const t = document.getElementById('table-autos');
         t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>Auto</th><th>Infrator</th><th>CPF/CNPJ</th>
+            <th></th><th>Data</th><th>Auto</th><th>Processo</th><th>Infrator</th><th>CPF/CNPJ</th>
             <th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th>
         </tr>`;
         const tbody = t.querySelector('tbody');
@@ -380,10 +380,12 @@
             const statusBadge = cancelado
                 ? '<span class="badge badge-cancelado">Cancelado</span>'
                 : `<span class="badge bg-info">${esc(r.DES_STATUS_FORMULARIO || 'Ativo')}</span>`;
+            const processo = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
             tr.innerHTML = `
                 <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'auto', ${i})">+</button></td>
                 <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td>
                 <td><strong>${esc(r.NUM_AUTO_INFRACAO)}</strong>/${esc(r.SER_AUTO_INFRACAO)}</td>
+                <td>${esc(processo)}</td>
                 <td>${esc(r.NOME_INFRATOR)}</td>
                 <td>${esc(r.CPF_CNPJ_INFRATOR)}</td>
                 <td>${esc(r.TIPO_INFRACAO)}</td>
@@ -419,7 +421,7 @@
     function renderEmbargosTable(rows) {
         const t = document.getElementById('table-embargos');
         t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>TAD</th><th>Embargado</th><th>CPF/CNPJ</th>
+            <th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>CPF/CNPJ</th>
             <th>UF</th><th>Municipio</th><th>Area (ha)</th><th>Situacao</th>
         </tr>`;
         const tbody = t.querySelector('tbody');
@@ -435,6 +437,7 @@
                 <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'embargo', ${i})">+</button></td>
                 <td>${fmtData(r.DAT_EMBARGO)}</td>
                 <td><strong>${esc(r.NUM_TAD)}</strong>/${esc(r.SER_TAD)}</td>
+                <td>${esc(r.NUM_PROCESSO || '')}</td>
                 <td>${esc(r.NOME_EMBARGADO)}</td>
                 <td>${esc(r.CPF_CNPJ_EMBARGADO)}</td>
                 <td>${esc(r.UF)}</td>
@@ -466,7 +469,7 @@
     function renderAutosTableIn(tableId, rows) {
         const t = document.getElementById(tableId);
         t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>Auto</th><th>Infrator</th><th>UF</th><th>Municipio</th>
+            <th></th><th>Data</th><th>Auto</th><th>Processo</th><th>Infrator</th><th>UF</th><th>Municipio</th>
             <th>Descricao</th><th>Valor</th>
         </tr>`;
         const tbody = t.querySelector('tbody');
@@ -475,10 +478,12 @@
             const tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
             const desc = (r.DES_AUTO_INFRACAO || '').substring(0, 80);
+            const processo = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
             tr.innerHTML = `
                 <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'auto', ${i})">+</button></td>
                 <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td>
                 <td><strong>${esc(r.NUM_AUTO_INFRACAO)}</strong></td>
+                <td>${esc(processo)}</td>
                 <td>${esc(r.NOME_INFRATOR)}</td>
                 <td>${esc(r.UF)}</td>
                 <td>${esc(r.MUNICIPIO)}</td>
@@ -492,7 +497,7 @@
     function renderEmbargosTableIn(tableId, rows) {
         const t = document.getElementById(tableId);
         t.querySelector('thead').innerHTML = `<tr>
-            <th></th><th>Data</th><th>TAD</th><th>Embargado</th><th>UF</th><th>Municipio</th>
+            <th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>UF</th><th>Municipio</th>
             <th>Descricao</th><th>Area</th>
         </tr>`;
         const tbody = t.querySelector('tbody');
@@ -505,6 +510,7 @@
                 <td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, 'embargo', ${i})">+</button></td>
                 <td>${fmtData(r.DAT_EMBARGO)}</td>
                 <td><strong>${esc(r.NUM_TAD)}</strong></td>
+                <td>${esc(r.NUM_PROCESSO || '')}</td>
                 <td>${esc(r.NOME_EMBARGADO)}</td>
                 <td>${esc(r.UF)}</td>
                 <td>${esc(r.MUNICIPIO)}</td>
@@ -634,11 +640,13 @@
         // Ultimos autos
         if (d.ultimos_autos && d.ultimos_autos.length) {
             html += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Ultimos Autos Ativos</h5>';
-            html += '<table class="table table-sm"><thead><tr><th>Data</th><th>Auto</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>';
+            html += '<table class="table table-sm"><thead><tr><th>Data</th><th>Auto</th><th>Processo</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>';
             d.ultimos_autos.forEach(r => {
+                const processo = r.NU_PROCESSO_FORMATADO || r.NUM_PROCESSO || '';
                 html += `<tr>
                     <td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td>
                     <td>${esc(r.NUM_AUTO_INFRACAO)}</td>
+                    <td>${esc(processo)}</td>
                     <td>${esc(r.TIPO_INFRACAO)}</td>
                     <td>${esc(r.UF)}</td>
                     <td>${esc(r.MUNICIPIO)}</td>
@@ -652,11 +660,12 @@
         // Embargos ativos
         if (d.embargos_ativos && d.embargos_ativos.length) {
             html += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Embargos Ativos</h5>';
-            html += '<table class="table table-sm"><thead><tr><th>Data</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>';
+            html += '<table class="table table-sm"><thead><tr><th>Data</th><th>TAD</th><th>Processo</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>';
             d.embargos_ativos.forEach(r => {
                 html += `<tr>
                     <td>${fmtData(r.DAT_EMBARGO)}</td>
                     <td>${esc(r.NUM_TAD)}</td>
+                    <td>${esc(r.NUM_PROCESSO || '')}</td>
                     <td>${esc(r.UF)}</td>
                     <td>${esc(r.MUNICIPIO)}</td>
                     <td>${esc(r.QTD_AREA_EMBARGADA)}</td>
