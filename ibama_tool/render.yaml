@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: monitor-ibama
+    runtime: python
+    rootDir: ibama_tool
+    buildCommand: |
+      pip install -r requirements.txt
+      python auto_update.py
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+    plan: free
+    healthCheckPath: /api/stats
