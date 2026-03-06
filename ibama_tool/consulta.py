@@ -3,7 +3,7 @@
 IBAMA Query Tool - Search autos de infracao and termos de embargo.
 Usage: python3 consulta.py <command> [args]
 """
-import sqlite3, sys, json, os, unicodedata
+import sqlite3, sys, json, os, unicodedata, re
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(_SCRIPT_DIR, "ibama.db")
@@ -20,6 +20,8 @@ def strip_accents(s):
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only=ON")
+    conn.execute("PRAGMA cache_size=-32000")  # 32MB read cache
     return conn
 
 
@@ -43,33 +45,33 @@ def fmt_valor(v):
 def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
                  num_auto=None, num_processo=None, tipo_infracao=None,
                  ano_inicio=None, ano_fim=None, limit=50):
-    """Search autos de infracao with multiple filters."""
+    """Search autos de infracao with multiple filters (uses pre-normalized columns)."""
     conn = get_conn()
     conditions = []
     params = []
 
     if nome:
-        conditions.append('UPPER(NOME_INFRATOR) LIKE ?')
+        conditions.append('NOME_INFRATOR_NORM LIKE ?')
         params.append(f'%{strip_accents(nome).upper()}%')
     if cpf_cnpj:
-        clean = cpf_cnpj.replace('.', '').replace('-', '').replace('/', '')
-        conditions.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_INFRATOR, ".", ""), "-", ""), "/", "") LIKE ?')
+        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
+        conditions.append('CPF_CNPJ_NORM LIKE ?')
         params.append(f'%{clean}%')
     if uf:
-        conditions.append('UPPER(UF) = ?')
+        conditions.append('UF = ?')
         params.append(uf.upper())
     if municipio:
-        conditions.append('UPPER(MUNICIPIO) LIKE ?')
+        conditions.append('MUNICIPIO_NORM LIKE ?')
         params.append(f'%{strip_accents(municipio).upper()}%')
     if num_auto:
         conditions.append('NUM_AUTO_INFRACAO = ?')
         params.append(num_auto)
     if num_processo:
-        clean = num_processo.replace('.', '').replace('/', '').replace('-', '')
-        conditions.append('REPLACE(REPLACE(REPLACE(NUM_PROCESSO, ".", ""), "/", ""), "-", "") LIKE ?')
+        clean = re.sub(r'[^0-9]', '', num_processo)
+        conditions.append('NUM_PROCESSO_NORM LIKE ?')
         params.append(f'%{clean}%')
     if tipo_infracao:
-        conditions.append('UPPER(TIPO_INFRACAO) LIKE ?')
+        conditions.append('TIPO_INFRACAO LIKE ?')
         params.append(f'%{tipo_infracao.upper()}%')
     if ano_inicio:
         conditions.append("DAT_HORA_AUTO_INFRACAO >= ?")
@@ -79,51 +81,61 @@ def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
         params.append(f"{ano_fim}-12-31")
 
     where = " AND ".join(conditions) if conditions else "1=1"
+
+    # Single query: fetch limit+1 rows to know if there are more, avoid separate COUNT(*)
+    fetch_limit = limit + 1
     sql = f"""
         SELECT * FROM autos_infracao
         WHERE {where}
         ORDER BY DAT_HORA_AUTO_INFRACAO DESC
         LIMIT ?
     """
-    params.append(limit)
+    params.append(fetch_limit)
 
     rows = conn.execute(sql, params).fetchall()
-    results = [dict(r) for r in rows]
+    has_more = len(rows) > limit
+    results = [dict(r) for r in rows[:limit]]
 
-    count_sql = f"SELECT COUNT(*) FROM autos_infracao WHERE {where}"
-    total = conn.execute(count_sql, params[:-1]).fetchone()[0]
+    # Remove normalized columns from results (internal use only)
+    for r in results:
+        r.pop('NOME_INFRATOR_NORM', None)
+        r.pop('MUNICIPIO_NORM', None)
+        r.pop('CPF_CNPJ_NORM', None)
+        r.pop('NUM_PROCESSO_NORM', None)
 
     conn.close()
-    return {"total": total, "showing": len(results), "results": results}
+    showing = len(results)
+    total = f"{showing}+" if has_more else str(showing)
+    return {"total": total, "showing": showing, "results": results}
 
 
 def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
                     num_tad=None, num_processo=None, num_auto=None,
                     ativos_only=False, limit=50):
-    """Search termos de embargo with multiple filters."""
+    """Search termos de embargo with multiple filters (uses pre-normalized columns)."""
     conn = get_conn()
     conditions = []
     params = []
 
     if nome:
-        conditions.append('UPPER(NOME_EMBARGADO) LIKE ?')
+        conditions.append('NOME_EMBARGADO_NORM LIKE ?')
         params.append(f'%{strip_accents(nome).upper()}%')
     if cpf_cnpj:
-        clean = cpf_cnpj.replace('.', '').replace('-', '').replace('/', '')
-        conditions.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_EMBARGADO, ".", ""), "-", ""), "/", "") LIKE ?')
+        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
+        conditions.append('CPF_CNPJ_NORM LIKE ?')
         params.append(f'%{clean}%')
     if uf:
-        conditions.append('UPPER(UF) = ?')
+        conditions.append('UF = ?')
         params.append(uf.upper())
     if municipio:
-        conditions.append('UPPER(MUNICIPIO) LIKE ?')
+        conditions.append('MUNICIPIO_NORM LIKE ?')
         params.append(f'%{strip_accents(municipio).upper()}%')
     if num_tad:
         conditions.append('NUM_TAD = ?')
         params.append(num_tad)
     if num_processo:
-        clean = num_processo.replace('.', '').replace('/', '').replace('-', '')
-        conditions.append('REPLACE(REPLACE(REPLACE(NUM_PROCESSO, ".", ""), "/", ""), "-", "") LIKE ?')
+        clean = re.sub(r'[^0-9]', '', num_processo)
+        conditions.append('NUM_PROCESSO_NORM LIKE ?')
         params.append(f'%{clean}%')
     if num_auto:
         conditions.append('NUM_AUTO_INFRACAO = ?')
@@ -133,22 +145,30 @@ def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
         conditions.append("SIT_CANCELADO = 'N'")
 
     where = " AND ".join(conditions) if conditions else "1=1"
+
+    fetch_limit = limit + 1
     sql = f"""
         SELECT * FROM termos_embargo
         WHERE {where}
         ORDER BY DAT_EMBARGO DESC
         LIMIT ?
     """
-    params.append(limit)
+    params.append(fetch_limit)
 
     rows = conn.execute(sql, params).fetchall()
-    results = [dict(r) for r in rows]
+    has_more = len(rows) > limit
+    results = [dict(r) for r in rows[:limit]]
 
-    count_sql = f"SELECT COUNT(*) FROM termos_embargo WHERE {where}"
-    total = conn.execute(count_sql, params[:-1]).fetchone()[0]
+    for r in results:
+        r.pop('NOME_EMBARGADO_NORM', None)
+        r.pop('MUNICIPIO_NORM', None)
+        r.pop('CPF_CNPJ_NORM', None)
+        r.pop('NUM_PROCESSO_NORM', None)
 
     conn.close()
-    return {"total": total, "showing": len(results), "results": results}
+    showing = len(results)
+    total = f"{showing}+" if has_more else str(showing)
+    return {"total": total, "showing": showing, "results": results}
 
 
 def search_texto(termo, tabela="autos", limit=50):
@@ -200,13 +220,13 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     params = []
 
     if nome:
-        conditions_ai.append('UPPER(NOME_INFRATOR) LIKE ?')
-        conditions_te.append('UPPER(NOME_EMBARGADO) LIKE ?')
+        conditions_ai.append('NOME_INFRATOR_NORM LIKE ?')
+        conditions_te.append('NOME_EMBARGADO_NORM LIKE ?')
         params.append(f'%{strip_accents(nome).upper()}%')
     if cpf_cnpj:
-        clean = cpf_cnpj.replace('.', '').replace('-', '').replace('/', '')
-        conditions_ai.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_INFRATOR, ".", ""), "-", ""), "/", "") LIKE ?')
-        conditions_te.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_EMBARGADO, ".", ""), "-", ""), "/", "") LIKE ?')
+        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
+        conditions_ai.append('CPF_CNPJ_NORM LIKE ?')
+        conditions_te.append('CPF_CNPJ_NORM LIKE ?')
         params.append(f'%{clean}%')
 
     where_ai = " AND ".join(conditions_ai) if conditions_ai else "1=1"

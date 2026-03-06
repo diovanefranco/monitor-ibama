@@ -361,7 +361,7 @@
             spin('spin-autos', false);
             if (d.error) { alert(d.error); return; }
             document.getElementById('count-autos').textContent =
-                `${d.total.toLocaleString('pt-BR')} resultados encontrados (exibindo ${d.showing})`;
+                `${d.total} resultados encontrados (exibindo ${d.showing})`;
             renderAutosTable(d.results);
         }).catch(e => { spin('spin-autos', false); alert('Erro: ' + e); });
     }
@@ -414,7 +414,7 @@
             spin('spin-embargos', false);
             if (d.error) { alert(d.error); return; }
             document.getElementById('count-embargos').textContent =
-                `${d.total.toLocaleString('pt-BR')} resultados encontrados (exibindo ${d.showing})`;
+                `${d.total} resultados encontrados (exibindo ${d.showing})`;
             renderEmbargosTable(d.results);
         }).catch(e => { spin('spin-embargos', false); alert('Erro: ' + e); });
     }
@@ -536,7 +536,8 @@
         const detailTr = document.createElement('tr');
         detailTr.classList.add('detail-row');
 
-        const skipFields = new Set(['SEQ_AUTO_INFRACAO','SEQ_TAD','NUM_PESSOA_INFRATOR','NUM_PESSOA_EMBARGO','COD_MUNICIPIO']);
+        const skipFields = new Set(['SEQ_AUTO_INFRACAO','SEQ_TAD','NUM_PESSOA_INFRATOR','NUM_PESSOA_EMBARGO','COD_MUNICIPIO',
+            'NOME_INFRATOR_NORM','NOME_EMBARGADO_NORM','MUNICIPIO_NORM','CPF_CNPJ_NORM','NUM_PROCESSO_NORM']);
         const labels = {
             DAT_HORA_AUTO_INFRACAO: 'Data Auto', DT_LANCAMENTO: 'Lancamento', DT_FATO_INFRACIONAL: 'Data Fato',
             NOME_INFRATOR: 'Infrator', CPF_CNPJ_INFRATOR: 'CPF/CNPJ', TP_PESSOA_INFRATOR: 'Tipo Pessoa',

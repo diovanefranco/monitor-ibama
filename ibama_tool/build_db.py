@@ -3,7 +3,7 @@
 IBAMA Data Loader - Extracts JSON/XML from ZIPs and loads into SQLite.
 Builds into a temp file and atomically replaces the DB to avoid corruption.
 """
-import os, sys, sqlite3, zipfile, json, xml.etree.ElementTree as ET, tempfile, shutil
+import os, sys, sqlite3, zipfile, json, xml.etree.ElementTree as ET, tempfile, shutil, unicodedata, re
 from datetime import datetime
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,13 +59,42 @@ TE_FIELDS = [
 ]
 
 
+def strip_accents(s):
+    """Remove accents/diacritics from string (ã→a, é→e, etc.)."""
+    if not s:
+        return ''
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+    )
+
+
+def digits_only(s):
+    """Extract only digits from string."""
+    if not s:
+        return ''
+    return re.sub(r'[^0-9]', '', s)
+
+
 def create_tables(conn):
-    """Create tables with proper schema."""
+    """Create tables with proper schema + pre-normalized search columns."""
     cols_ai = ", ".join([f'"{f}" TEXT' for f in AI_FIELDS])
-    conn.execute(f'CREATE TABLE autos_infracao ({cols_ai})')
+    conn.execute(f'''CREATE TABLE autos_infracao (
+        {cols_ai},
+        NOME_INFRATOR_NORM TEXT,
+        MUNICIPIO_NORM TEXT,
+        CPF_CNPJ_NORM TEXT,
+        NUM_PROCESSO_NORM TEXT
+    )''')
 
     cols_te = ", ".join([f'"{f}" TEXT' for f in TE_FIELDS])
-    conn.execute(f'CREATE TABLE termos_embargo ({cols_te})')
+    conn.execute(f'''CREATE TABLE termos_embargo (
+        {cols_te},
+        NOME_EMBARGADO_NORM TEXT,
+        MUNICIPIO_NORM TEXT,
+        CPF_CNPJ_NORM TEXT,
+        NUM_PROCESSO_NORM TEXT
+    )''')
 
     conn.commit()
 
@@ -73,26 +102,25 @@ def create_tables(conn):
 def create_indexes(conn):
     """Create indexes for fast searching."""
     indexes = [
-        # Autos de infracao
-        ("idx_ai_nome", "autos_infracao", "NOME_INFRATOR"),
-        ("idx_ai_cpf", "autos_infracao", "CPF_CNPJ_INFRATOR"),
+        # Autos de infracao - normalized columns for fast search
+        ("idx_ai_nome_norm", "autos_infracao", "NOME_INFRATOR_NORM"),
+        ("idx_ai_cpf_norm", "autos_infracao", "CPF_CNPJ_NORM"),
+        ("idx_ai_proc_norm", "autos_infracao", "NUM_PROCESSO_NORM"),
+        ("idx_ai_mun_norm", "autos_infracao", "MUNICIPIO_NORM"),
         ("idx_ai_uf", "autos_infracao", "UF"),
-        ("idx_ai_mun", "autos_infracao", "MUNICIPIO"),
-        ("idx_ai_uf_mun", "autos_infracao", "UF, MUNICIPIO"),  # composite
+        ("idx_ai_uf_mun", "autos_infracao", "UF, MUNICIPIO_NORM"),
         ("idx_ai_num", "autos_infracao", "NUM_AUTO_INFRACAO"),
-        ("idx_ai_proc", "autos_infracao", "NUM_PROCESSO"),
         ("idx_ai_data", "autos_infracao", "DAT_HORA_AUTO_INFRACAO"),
         ("idx_ai_tipo", "autos_infracao", "TIPO_INFRACAO"),
-        ("idx_ai_status", "autos_infracao", "DES_STATUS_FORMULARIO"),
         ("idx_ai_cancelado", "autos_infracao", "SIT_CANCELADO"),
-        # Termos de embargo
-        ("idx_te_nome", "termos_embargo", "NOME_EMBARGADO"),
-        ("idx_te_cpf", "termos_embargo", "CPF_CNPJ_EMBARGADO"),
+        # Termos de embargo - normalized columns for fast search
+        ("idx_te_nome_norm", "termos_embargo", "NOME_EMBARGADO_NORM"),
+        ("idx_te_cpf_norm", "termos_embargo", "CPF_CNPJ_NORM"),
+        ("idx_te_proc_norm", "termos_embargo", "NUM_PROCESSO_NORM"),
+        ("idx_te_mun_norm", "termos_embargo", "MUNICIPIO_NORM"),
         ("idx_te_uf", "termos_embargo", "UF"),
-        ("idx_te_mun", "termos_embargo", "MUNICIPIO"),
-        ("idx_te_uf_mun", "termos_embargo", "UF, MUNICIPIO"),  # composite
+        ("idx_te_uf_mun", "termos_embargo", "UF, MUNICIPIO_NORM"),
         ("idx_te_num", "termos_embargo", "NUM_TAD"),
-        ("idx_te_proc", "termos_embargo", "NUM_PROCESSO"),
         ("idx_te_data", "termos_embargo", "DAT_EMBARGO"),
         ("idx_te_ai", "termos_embargo", "NUM_AUTO_INFRACAO"),
         ("idx_te_cancelado", "termos_embargo", "SIT_CANCELADO"),
@@ -151,8 +179,9 @@ def load_auto_infracao(conn):
 
     total = 0
     parse_errors = 0
-    placeholders = ", ".join(["?" for _ in AI_FIELDS])
-    cols = ", ".join([f'"{f}"' for f in AI_FIELDS])
+    all_cols = AI_FIELDS + ['NOME_INFRATOR_NORM', 'MUNICIPIO_NORM', 'CPF_CNPJ_NORM', 'NUM_PROCESSO_NORM']
+    placeholders = ", ".join(["?" for _ in all_cols])
+    cols = ", ".join([f'"{f}"' for f in all_cols])
     sql = f'INSERT INTO autos_infracao ({cols}) VALUES ({placeholders})'
 
     with zipfile.ZipFile(zip_path) as zf:
@@ -171,8 +200,18 @@ def load_auto_infracao(conn):
 
             rows = []
             for rec in records:
-                row = tuple(str(rec.get(field, '') or '') for field in AI_FIELDS)
-                rows.append(row)
+                vals = [str(rec.get(field, '') or '') for field in AI_FIELDS]
+                nome = rec.get('NOME_INFRATOR', '') or ''
+                mun = rec.get('MUNICIPIO', '') or ''
+                cpf = rec.get('CPF_CNPJ_INFRATOR', '') or ''
+                proc = rec.get('NUM_PROCESSO', '') or ''
+                vals.extend([
+                    strip_accents(nome).upper(),
+                    strip_accents(mun).upper(),
+                    digits_only(cpf),
+                    digits_only(proc),
+                ])
+                rows.append(tuple(vals))
 
             conn.executemany(sql, rows)
             conn.commit()
@@ -194,8 +233,9 @@ def load_termo_embargo(conn):
 
     total = 0
     parse_errors = 0
-    placeholders = ", ".join(["?" for _ in TE_FIELDS])
-    cols = ", ".join([f'"{f}"' for f in TE_FIELDS])
+    all_cols = TE_FIELDS + ['NOME_EMBARGADO_NORM', 'MUNICIPIO_NORM', 'CPF_CNPJ_NORM', 'NUM_PROCESSO_NORM']
+    placeholders = ", ".join(["?" for _ in all_cols])
+    cols = ", ".join([f'"{f}"' for f in all_cols])
     sql = f'INSERT INTO termos_embargo ({cols}) VALUES ({placeholders})'
 
     with zipfile.ZipFile(zip_path) as zf:
@@ -211,8 +251,18 @@ def load_termo_embargo(conn):
                             rec = {}
                             for child in elem:
                                 rec[child.tag] = (child.text or '').strip()
-                            row = tuple(rec.get(field, '') for field in TE_FIELDS)
-                            batch.append(row)
+                            vals = [rec.get(field, '') for field in TE_FIELDS]
+                            nome = rec.get('NOME_EMBARGADO', '') or ''
+                            mun = rec.get('MUNICIPIO', '') or ''
+                            cpf = rec.get('CPF_CNPJ_EMBARGADO', '') or ''
+                            proc = rec.get('NUM_PROCESSO', '') or ''
+                            vals.extend([
+                                strip_accents(nome).upper(),
+                                strip_accents(mun).upper(),
+                                digits_only(cpf),
+                                digits_only(proc),
+                            ])
+                            batch.append(tuple(vals))
 
                             if len(batch) >= 10000:
                                 conn.executemany(sql, batch)
