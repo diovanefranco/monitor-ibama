@@ -12,8 +12,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-me")
 
 # Login credentials (set via environment variables on Render)
-APP_USER = os.environ.get("APP_USER", "admin")
-APP_PASS = os.environ.get("APP_PASS", "ibama2026")
+APP_USER = os.environ.get("APP_USER", "contato@diovanefranco.com.br")
+APP_PASS = os.environ.get("APP_PASS", "PantheraLeo.11")
 
 
 def login_required(f):
