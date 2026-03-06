@@ -1,0 +1,107 @@
+name: Atualizar Dados IBAMA
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC = midnight BRT
+  workflow_dispatch:  # permite execucao manual pelo GitHub
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tentar download do IBAMA
+        id: download
+        run: |
+          mkdir -p /tmp/ibama-data
+          echo "=== Baixando auto_infracao_json.zip ==="
+          curl -fSL --retry 3 --retry-delay 10 --max-time 600 --connect-timeout 30 \
+            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" \
+            -H "Accept: */*" \
+            -o /tmp/ibama-data/auto_infracao_json.zip \
+            "https://dadosabertos.ibama.gov.br/dados/SIFISC/auto_infracao/auto_infracao/auto_infracao_json.zip" \
+            && echo "auto_infracao OK: $(du -h /tmp/ibama-data/auto_infracao_json.zip | cut -f1)" \
+            || echo "auto_infracao FALHOU"
+
+          echo "=== Baixando termo_embargo_xml.zip ==="
+          curl -fSL --retry 3 --retry-delay 10 --max-time 600 --connect-timeout 30 \
+            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" \
+            -H "Accept: */*" \
+            -o /tmp/ibama-data/termo_embargo_xml.zip \
+            "https://dadosabertos.ibama.gov.br/dados/SIFISC/termo_embargo/termo_embargo/termo_embargo_xml.zip" \
+            && echo "termo_embargo OK: $(du -h /tmp/ibama-data/termo_embargo_xml.zip | cut -f1)" \
+            || echo "termo_embargo FALHOU"
+
+          # Verificar tamanho dos arquivos (minimo 1MB)
+          AI_SIZE=$(stat -c%s /tmp/ibama-data/auto_infracao_json.zip 2>/dev/null || echo 0)
+          TE_SIZE=$(stat -c%s /tmp/ibama-data/termo_embargo_xml.zip 2>/dev/null || echo 0)
+
+          echo "auto_infracao: ${AI_SIZE} bytes"
+          echo "termo_embargo: ${TE_SIZE} bytes"
+
+          if [ "$AI_SIZE" -gt 1000000 ] && [ "$TE_SIZE" -gt 1000000 ]; then
+            echo "downloaded=true" >> $GITHUB_OUTPUT
+            echo "Downloads OK!"
+          else
+            echo "downloaded=false" >> $GITHUB_OUTPUT
+            echo "AVISO: Download falhou (provavelmente bloqueio Cloudflare)."
+          fi
+
+      - name: Limpar releases antigos
+        if: steps.download.outputs.downloaded == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Removendo releases data-* antigos..."
+          for tag in $(gh release list --limit 50 --json tagName -q '.[].tagName' | grep '^data-' || true); do
+            echo "  Removendo release $tag"
+            gh release delete "$tag" --yes 2>/dev/null || true
+            git push origin ":refs/tags/$tag" 2>/dev/null || true
+          done
+
+      - name: Criar nova release com dados atualizados
+        if: steps.download.outputs.downloaded == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="data-$(date +%Y-%m-%d)"
+
+          gh release create "$TAG" \
+            /tmp/ibama-data/auto_infracao_json.zip \
+            /tmp/ibama-data/termo_embargo_xml.zip \
+            --title "Dados IBAMA - $(date +%Y-%m-%d)" \
+            --notes "Atualizacao automatica via GitHub Actions - $(date +'%d/%m/%Y %H:%M UTC')"
+
+          echo "Release $TAG criada com sucesso!"
+
+          # Atualizar auto_update.py para apontar para nova release
+          sed -i "s|releases/download/data-[0-9-]*|releases/download/$TAG|" ibama_tool/auto_update.py
+
+      - name: Commit e push (dispara deploy no Render)
+        if: steps.download.outputs.downloaded == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ibama_tool/auto_update.py
+          if git diff --cached --quiet; then
+            echo "Nenhuma mudanca no auto_update.py (mesma data). Fazendo commit vazio."
+            git commit --allow-empty -m "Dados IBAMA atualizados - $(date +%Y-%m-%d)"
+          else
+            git commit -m "Dados IBAMA atualizados - data-$(date +%Y-%m-%d)"
+          fi
+          git push
+
+      - name: Fallback - Trigger Render deploy sem dados novos
+        if: steps.download.outputs.downloaded != 'true'
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "Disparando deploy no Render via webhook..."
+            curl -fsSL "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          else
+            echo "Dados IBAMA nao atualizados (Cloudflare bloqueou download)."
+            echo "Para atualizar manualmente, faca upload dos ZIPs no GitHub Releases."
+          fi
