@@ -13,7 +13,8 @@ app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-m
 
 # Login credentials (set via environment variables on Render)
 APP_USER = os.environ.get("APP_USER", "contato@diovanefranco.com.br")
-APP_PASS = os.environ.get("APP_PASS", "Australopithecus.11")
+APP_PASS = os.environ.get("APP_PASS", "PantheraLeo.11")
+APP_CODE = os.environ.get("APP_CODE", "DF2030")
 
 
 def login_required(f):
@@ -34,7 +35,8 @@ def login():
     if request.method == "POST":
         user = request.form.get("username", "").strip()
         pwd = request.form.get("password", "").strip()
-        if user == APP_USER and pwd == APP_PASS:
+        code = request.form.get("code", "").strip()
+        if user == APP_USER and pwd == APP_PASS and code == APP_CODE:
             session["logged_in"] = True
             session.permanent = True
             return redirect(url_for("index"))
