@@ -118,5 +118,20 @@ def api_resumo():
     return jsonify(consulta.resumo_autuado(nome=nome, cpf_cnpj=cpf_cnpj))
 
 
+def warmup_db():
+    """Pre-load DB pages into OS cache on startup for faster first queries."""
+    try:
+        conn = consulta.get_conn()
+        conn.execute("SELECT COUNT(*) FROM autos_infracao").fetchone()
+        conn.execute("SELECT COUNT(*) FROM termos_embargo").fetchone()
+        conn.close()
+        print("DB warmup OK")
+    except Exception as e:
+        print(f"DB warmup skip: {e}")
+
+
+warmup_db()
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

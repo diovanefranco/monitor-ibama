@@ -21,7 +21,9 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA query_only=ON")
-    conn.execute("PRAGMA cache_size=-32000")  # 32MB read cache
+    conn.execute("PRAGMA cache_size=-64000")  # 64MB read cache
+    conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
+    conn.execute("PRAGMA temp_store=MEMORY")  # temp tables in RAM
     return conn
 
 
