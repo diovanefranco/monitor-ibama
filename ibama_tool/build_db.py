@@ -250,7 +250,7 @@ def main():
         conn = sqlite3.connect(tmp_path)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-200000")  # 200MB cache
+        conn.execute("PRAGMA cache_size=-64000")  # 64MB cache (safe for Render free tier)
 
         print("Creating tables...")
         create_tables(conn)

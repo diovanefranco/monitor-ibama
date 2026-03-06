@@ -34,8 +34,15 @@ def download_file(url, dest):
     """Download a file with progress reporting."""
     print(f"  Downloading {os.path.basename(dest)}...")
     try:
-        req = Request(url, headers={"User-Agent": "IBAMA-Monitor/1.0"})
-        response = urlopen(req, timeout=300)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "identity",
+            "Connection": "keep-alive",
+        }
+        req = Request(url, headers=headers)
+        response = urlopen(req, timeout=600)
         total = int(response.headers.get("Content-Length", 0))
 
         tmp_path = dest + ".tmp"
