@@ -3,10 +3,18 @@
 IBAMA Query Tool - Search autos de infracao and termos de embargo.
 Usage: python3 consulta.py <command> [args]
 """
-import sqlite3, sys, json, os
+import sqlite3, sys, json, os, unicodedata
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(_SCRIPT_DIR, "ibama.db")
+
+
+def strip_accents(s):
+    """Remove accents/diacritics from string (ã→a, é→e, etc.)."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 
 def get_conn():
@@ -42,7 +50,7 @@ def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
 
     if nome:
         conditions.append('UPPER(NOME_INFRATOR) LIKE ?')
-        params.append(f'%{nome.upper()}%')
+        params.append(f'%{strip_accents(nome).upper()}%')
     if cpf_cnpj:
         clean = cpf_cnpj.replace('.', '').replace('-', '').replace('/', '')
         conditions.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_INFRATOR, ".", ""), "-", ""), "/", "") LIKE ?')
@@ -52,7 +60,7 @@ def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
         params.append(uf.upper())
     if municipio:
         conditions.append('UPPER(MUNICIPIO) LIKE ?')
-        params.append(f'%{municipio.upper()}%')
+        params.append(f'%{strip_accents(municipio).upper()}%')
     if num_auto:
         conditions.append('NUM_AUTO_INFRACAO = ?')
         params.append(num_auto)
@@ -99,7 +107,7 @@ def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
 
     if nome:
         conditions.append('UPPER(NOME_EMBARGADO) LIKE ?')
-        params.append(f'%{nome.upper()}%')
+        params.append(f'%{strip_accents(nome).upper()}%')
     if cpf_cnpj:
         clean = cpf_cnpj.replace('.', '').replace('-', '').replace('/', '')
         conditions.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_EMBARGADO, ".", ""), "-", ""), "/", "") LIKE ?')
@@ -109,7 +117,7 @@ def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
         params.append(uf.upper())
     if municipio:
         conditions.append('UPPER(MUNICIPIO) LIKE ?')
-        params.append(f'%{municipio.upper()}%')
+        params.append(f'%{strip_accents(municipio).upper()}%')
     if num_tad:
         conditions.append('NUM_TAD = ?')
         params.append(num_tad)
@@ -194,7 +202,7 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     if nome:
         conditions_ai.append('UPPER(NOME_INFRATOR) LIKE ?')
         conditions_te.append('UPPER(NOME_EMBARGADO) LIKE ?')
-        params.append(f'%{nome.upper()}%')
+        params.append(f'%{strip_accents(nome).upper()}%')
     if cpf_cnpj:
         clean = cpf_cnpj.replace('.', '').replace('-', '').replace('/', '')
         conditions_ai.append('REPLACE(REPLACE(REPLACE(CPF_CNPJ_INFRATOR, ".", ""), "-", ""), "/", "") LIKE ?')
