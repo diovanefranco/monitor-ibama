@@ -60,53 +60,65 @@ def index():
 @app.route("/api/stats")
 @login_required
 def api_stats():
-    return jsonify(consulta.stats())
+    try:
+        return jsonify(consulta.stats())
+    except Exception as e:
+        return jsonify({"error": f"IBAMA DB erro: {e}"}), 503
 
 
 @app.route("/api/autos")
 @login_required
 def api_autos():
-    params = {
-        "nome": request.args.get("nome") or None,
-        "cpf_cnpj": request.args.get("cpf_cnpj") or None,
-        "uf": request.args.get("uf") or None,
-        "municipio": request.args.get("municipio") or None,
-        "num_auto": request.args.get("num_auto") or None,
-        "num_processo": request.args.get("num_processo") or None,
-        "tipo_infracao": request.args.get("tipo_infracao") or None,
-        "ano_inicio": request.args.get("ano_inicio") or None,
-        "ano_fim": request.args.get("ano_fim") or None,
-        "limit": int(request.args.get("limit", 50)),
-    }
-    return jsonify(consulta.search_autos(**params))
+    try:
+        params = {
+            "nome": request.args.get("nome") or None,
+            "cpf_cnpj": request.args.get("cpf_cnpj") or None,
+            "uf": request.args.get("uf") or None,
+            "municipio": request.args.get("municipio") or None,
+            "num_auto": request.args.get("num_auto") or None,
+            "num_processo": request.args.get("num_processo") or None,
+            "tipo_infracao": request.args.get("tipo_infracao") or None,
+            "ano_inicio": request.args.get("ano_inicio") or None,
+            "ano_fim": request.args.get("ano_fim") or None,
+            "limit": int(request.args.get("limit", 50)),
+        }
+        return jsonify(consulta.search_autos(**params))
+    except Exception as e:
+        return jsonify({"error": f"Erro na consulta IBAMA: {e}"}), 500
 
 
 @app.route("/api/embargos")
 @login_required
 def api_embargos():
-    params = {
-        "nome": request.args.get("nome") or None,
-        "cpf_cnpj": request.args.get("cpf_cnpj") or None,
-        "uf": request.args.get("uf") or None,
-        "municipio": request.args.get("municipio") or None,
-        "num_tad": request.args.get("num_tad") or None,
-        "num_processo": request.args.get("num_processo") or None,
-        "num_auto": request.args.get("num_auto") or None,
-        "ativos_only": request.args.get("ativos_only", "").lower() in ("true", "1", "sim"),
-        "limit": int(request.args.get("limit", 50)),
-    }
-    return jsonify(consulta.search_embargos(**params))
+    try:
+        params = {
+            "nome": request.args.get("nome") or None,
+            "cpf_cnpj": request.args.get("cpf_cnpj") or None,
+            "uf": request.args.get("uf") or None,
+            "municipio": request.args.get("municipio") or None,
+            "num_tad": request.args.get("num_tad") or None,
+            "num_processo": request.args.get("num_processo") or None,
+            "num_auto": request.args.get("num_auto") or None,
+            "ativos_only": request.args.get("ativos_only", "").lower() in ("true", "1", "sim"),
+            "limit": int(request.args.get("limit", 50)),
+        }
+        return jsonify(consulta.search_embargos(**params))
+    except Exception as e:
+        return jsonify({"error": f"Erro na consulta IBAMA: {e}"}), 500
 
 
 @app.route("/api/texto")
 @login_required
 def api_texto():
-    q = request.args.get("q", "").strip()
-    if not q:
-        return jsonify({"error": "Parametro 'q' obrigatorio"})
-    tabela = request.args.get("tabela", "autos")
-    limit = int(request.args.get("limit", 50))
-    return jsonify(consulta.search_texto(q, tabela=tabela, limit=limit))
+    try:
+        q = request.args.get("q", "").strip()
+        if not q:
+            return jsonify({"error": "Parametro 'q' obrigatorio"})
+        tabela = request.args.get("tabela", "autos")
+        limit = int(request.args.get("limit", 50))
+        return jsonify(consulta.search_texto(q, tabela=tabela, limit=limit))
+    except Exception as e:
+        return jsonify({"error": f"Erro na consulta IBAMA: {e}"}), 500
 
 
 @app.route("/api/resumo")
@@ -116,7 +128,10 @@ def api_resumo():
     cpf_cnpj = request.args.get("cpf_cnpj") or None
     if not nome and not cpf_cnpj:
         return jsonify({"error": "Informe 'nome' ou 'cpf_cnpj'"})
-    return jsonify(consulta.resumo_autuado(nome=nome, cpf_cnpj=cpf_cnpj))
+    try:
+        return jsonify(consulta.resumo_autuado(nome=nome, cpf_cnpj=cpf_cnpj))
+    except Exception as e:
+        return jsonify({"error": f"Erro na consulta IBAMA: {e}"}), 500
 
 
 # ============================================================

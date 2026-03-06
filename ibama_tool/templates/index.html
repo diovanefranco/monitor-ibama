@@ -379,8 +379,8 @@
     </div><!-- /container -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
     <script>
     const UFS = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
@@ -405,9 +405,9 @@
         document.querySelectorAll('.uf-select').forEach(sel => {
             UFS.forEach(uf => { const o = document.createElement('option'); o.value = uf; o.textContent = uf; sel.appendChild(o); });
         });
-        fetch('/api/stats').then(r => r.json()).then(d => {
+        fetch('/api/stats').then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(d => {
             const ibStats = `IBAMA: ${(d.autos_infracao||0).toLocaleString('pt-BR')} autos, ${(d.termos_embargo||0).toLocaleString('pt-BR')} embargos`;
-            fetch('/api/sema/stats').then(r => r.json()).then(s => {
+            fetch('/api/sema/stats').then(r => { if(!r.ok) throw new Error(r.status); return r.json(); }).then(s => {
                 const smAutos = (s.sema_autos_infracao||0).toLocaleString('pt-BR');
                 const smTermos = (s.sema_outros_termos||0).toLocaleString('pt-BR');
                 const smEmb = (s.sema_embargos||0).toLocaleString('pt-BR');
@@ -415,12 +415,13 @@
                 const smStats = `SEMA-MT: ${smAutos} autos, ${smTermos} termos, ${smEmb} emb., ${smDes} des.`;
                 document.getElementById('db-stats').textContent = ibStats + '  |  ' + smStats;
             }).catch(() => { document.getElementById('db-stats').textContent = ibStats; });
-        });
+        }).catch(() => { document.getElementById('db-stats').textContent = 'Carregando base de dados...'; });
     });
 
     // ---- UTILS ----
     function spin(id, on) { document.getElementById(id).classList.toggle('active', on); }
     function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function safeJson(r) { if (!r.ok) return r.text().then(t => { try { return JSON.parse(t); } catch(e) { throw new Error('Servidor retornou erro '+r.status); }}); return r.json(); }
     function fmtData(v) { if (!v) return '-'; if (v.length >= 10) return v.substring(0,10).split('-').reverse().join('/'); return v; }
     function fmtValor(v) {
         if (!v || v === '' || v === '0') return '-';
@@ -474,7 +475,7 @@
             num_auto:'ib-ai-num-auto',num_processo:'ib-ai-processo',tipo_infracao:'ib-ai-tipo',
             ano_inicio:'ib-ai-ano-ini',ano_fim:'ib-ai-ano-fim',limit:'ib-ai-limit'};
         for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
-        fetch('/api/autos?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/autos?'+p).then(safeJson).then(d => {
             spin('spin-ib-autos',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['ib-autos'] = { results: d.results, params: Object.fromEntries(p), title: 'Autos de Infracao - IBAMA' };
@@ -505,7 +506,7 @@
             num_tad:'ib-te-num-tad',num_processo:'ib-te-processo',num_auto:'ib-te-num-auto',limit:'ib-te-limit'};
         for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
         if (document.getElementById('ib-te-ativos').checked) p.set('ativos_only','true');
-        fetch('/api/embargos?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/embargos?'+p).then(safeJson).then(d => {
             spin('spin-ib-embargos',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['ib-embargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Termos de Embargo - IBAMA' };
@@ -534,7 +535,7 @@
         if (!q) { spin('spin-ib-texto',false); return; }
         const tabela = document.getElementById('ib-fts-tabela').value;
         const limit = document.getElementById('ib-fts-limit').value;
-        fetch(`/api/texto?q=${encodeURIComponent(q)}&tabela=${tabela}&limit=${limit}`).then(r=>r.json()).then(d => {
+        fetch(`/api/texto?q=${encodeURIComponent(q)}&tabela=${tabela}&limit=${limit}`).then(safeJson).then(d => {
             spin('spin-ib-texto',false);
             if (d.error) { alert(d.error + (d.hint ? '\n'+d.hint : '')); return; }
             _lastResults['ib-texto'] = { results: d.results, params: {q, tabela}, title: `Busca Livre "${q}" (${tabela}) - IBAMA`, _tabela: tabela };
@@ -571,7 +572,7 @@
         const cpf = document.getElementById('ib-res-cpf').value.trim();
         if (nome) p.set('nome',nome); if (cpf) p.set('cpf_cnpj',cpf);
         if (!nome && !cpf) { spin('spin-ib-resumo',false); alert('Informe nome ou CPF/CNPJ'); return; }
-        fetch('/api/resumo?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/resumo?'+p).then(safeJson).then(d => {
             spin('spin-ib-resumo',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['ib-resumo'] = { data: d, params: {nome, cpf_cnpj: cpf} };
@@ -615,7 +616,7 @@
             num_auto:'sm-ai-num-auto',num_processo:'sm-ai-processo',fonte:'sm-ai-fonte',
             ano_inicio:'sm-ai-ano-ini',ano_fim:'sm-ai-ano-fim',limit:'sm-ai-limit'};
         for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
-        fetch('/api/sema/autos?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/sema/autos?'+p).then(safeJson).then(d => {
             spin('spin-sm-autos',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['sm-autos'] = { results: d.results, params: Object.fromEntries(p), title: 'Autos de Infracao - SEMA-MT' };
@@ -642,7 +643,7 @@
             num_doc:'sm-ot-num-doc',num_processo:'sm-ot-processo',fonte:'sm-ot-fonte',
             ano_inicio:'sm-ot-ano-ini',ano_fim:'sm-ot-ano-fim',limit:'sm-ot-limit'};
         for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
-        fetch('/api/sema/termos?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/sema/termos?'+p).then(safeJson).then(d => {
             spin('spin-sm-termos',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['sm-termos'] = { results: d.results, params: Object.fromEntries(p), title: 'Outros Termos - SEMA-MT' };
@@ -669,7 +670,7 @@
             num_embargo:'sm-te-num-embargo',num_processo:'sm-te-processo',num_auto:'sm-te-num-auto',
             fonte:'sm-te-fonte',limit:'sm-te-limit'};
         for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
-        fetch('/api/sema/embargos?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/sema/embargos?'+p).then(safeJson).then(d => {
             spin('spin-sm-embargos',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['sm-embargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Embargos - SEMA-MT' };
@@ -697,7 +698,7 @@
             num_doc:'sm-de-num-doc',num_processo:'sm-de-processo',num_auto:'sm-de-num-auto',
             fonte:'sm-de-fonte',limit:'sm-de-limit'};
         for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
-        fetch('/api/sema/desembargos?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/sema/desembargos?'+p).then(safeJson).then(d => {
             spin('spin-sm-desembargos',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['sm-desembargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Desembargos - SEMA-MT' };
@@ -725,7 +726,7 @@
         const cpf = document.getElementById('sm-res-cpf').value.trim();
         if (nome) p.set('nome',nome); if (cpf) p.set('cpf_cnpj',cpf);
         if (!nome && !cpf) { spin('spin-sm-resumo',false); alert('Informe nome ou CPF/CNPJ'); return; }
-        fetch('/api/sema/resumo?'+p).then(r=>r.json()).then(d => {
+        fetch('/api/sema/resumo?'+p).then(safeJson).then(d => {
             spin('spin-sm-resumo',false);
             if (d.error) { alert(d.error); return; }
             _lastResults['sm-resumo'] = { data: d, params: {nome, cpf_cnpj: cpf} };
