@@ -44,27 +44,55 @@ def fmt_valor(v):
     return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
+def _fts_match_expr(terms):
+    """Build FTS5 MATCH expression: each word must match (AND logic)."""
+    words = terms.strip().split()
+    # Quote each word and join with AND
+    return ' '.join(f'"{w}"' for w in words if w)
+
+
 def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
                  num_auto=None, num_processo=None, tipo_infracao=None,
                  ano_inicio=None, ano_fim=None, limit=50):
-    """Search autos de infracao with multiple filters (uses pre-normalized columns)."""
+    """Search autos de infracao with multiple filters (uses FTS5 + indexes)."""
     conn = get_conn()
     conditions = []
     params = []
+    use_fts_nome = False
+    use_fts_mun = False
 
+    # FTS5 for name search (sub-second vs 40s with LIKE)
     if nome:
-        conditions.append('NOME_INFRATOR_NORM LIKE ?')
-        params.append(f'%{strip_accents(nome).upper()}%')
+        norm = strip_accents(nome).upper()
+        match_expr = _fts_match_expr(norm)
+        if match_expr:
+            conditions.append('rowid IN (SELECT rowid FROM fts_ai_nome WHERE fts_ai_nome MATCH ?)')
+            params.append(match_expr)
+            use_fts_nome = True
+
+    # CPF: exact match on digits (uses index directly)
     if cpf_cnpj:
         clean = re.sub(r'[^0-9]', '', cpf_cnpj)
-        conditions.append('CPF_CNPJ_NORM LIKE ?')
-        params.append(f'%{clean}%')
+        if len(clean) >= 11:
+            conditions.append('CPF_CNPJ_NORM = ?')
+        else:
+            conditions.append('CPF_CNPJ_NORM LIKE ?')
+            clean = f'%{clean}%'
+        params.append(clean)
+
     if uf:
         conditions.append('UF = ?')
         params.append(uf.upper())
+
+    # FTS5 for municipio search
     if municipio:
-        conditions.append('MUNICIPIO_NORM LIKE ?')
-        params.append(f'%{strip_accents(municipio).upper()}%')
+        norm = strip_accents(municipio).upper()
+        match_expr = _fts_match_expr(norm)
+        if match_expr:
+            conditions.append('rowid IN (SELECT rowid FROM fts_ai_mun WHERE fts_ai_mun MATCH ?)')
+            params.append(match_expr)
+            use_fts_mun = True
+
     if num_auto:
         conditions.append('NUM_AUTO_INFRACAO = ?')
         params.append(num_auto)
@@ -84,7 +112,7 @@ def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
 
     where = " AND ".join(conditions) if conditions else "1=1"
 
-    # Single query: fetch limit+1 rows to know if there are more, avoid separate COUNT(*)
+    # Single query: fetch limit+1 rows to know if there are more
     fetch_limit = limit + 1
     sql = f"""
         SELECT * FROM autos_infracao
@@ -114,24 +142,41 @@ def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
 def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
                     num_tad=None, num_processo=None, num_auto=None,
                     ativos_only=False, limit=50):
-    """Search termos de embargo with multiple filters (uses pre-normalized columns)."""
+    """Search termos de embargo with multiple filters (uses FTS5 + indexes)."""
     conn = get_conn()
     conditions = []
     params = []
 
+    # FTS5 for name search
     if nome:
-        conditions.append('NOME_EMBARGADO_NORM LIKE ?')
-        params.append(f'%{strip_accents(nome).upper()}%')
+        norm = strip_accents(nome).upper()
+        match_expr = _fts_match_expr(norm)
+        if match_expr:
+            conditions.append('rowid IN (SELECT rowid FROM fts_te_nome WHERE fts_te_nome MATCH ?)')
+            params.append(match_expr)
+
+    # CPF: exact match on digits
     if cpf_cnpj:
         clean = re.sub(r'[^0-9]', '', cpf_cnpj)
-        conditions.append('CPF_CNPJ_NORM LIKE ?')
-        params.append(f'%{clean}%')
+        if len(clean) >= 11:
+            conditions.append('CPF_CNPJ_NORM = ?')
+        else:
+            conditions.append('CPF_CNPJ_NORM LIKE ?')
+            clean = f'%{clean}%'
+        params.append(clean)
+
     if uf:
         conditions.append('UF = ?')
         params.append(uf.upper())
+
+    # FTS5 for municipio search
     if municipio:
-        conditions.append('MUNICIPIO_NORM LIKE ?')
-        params.append(f'%{strip_accents(municipio).upper()}%')
+        norm = strip_accents(municipio).upper()
+        match_expr = _fts_match_expr(norm)
+        if match_expr:
+            conditions.append('rowid IN (SELECT rowid FROM fts_te_mun WHERE fts_te_mun MATCH ?)')
+            params.append(match_expr)
+
     if num_tad:
         conditions.append('NUM_TAD = ?')
         params.append(num_tad)
@@ -222,14 +267,22 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     params = []
 
     if nome:
-        conditions_ai.append('NOME_INFRATOR_NORM LIKE ?')
-        conditions_te.append('NOME_EMBARGADO_NORM LIKE ?')
-        params.append(f'%{strip_accents(nome).upper()}%')
+        norm = strip_accents(nome).upper()
+        match_expr = _fts_match_expr(norm)
+        if match_expr:
+            conditions_ai.append('rowid IN (SELECT rowid FROM fts_ai_nome WHERE fts_ai_nome MATCH ?)')
+            conditions_te.append('rowid IN (SELECT rowid FROM fts_te_nome WHERE fts_te_nome MATCH ?)')
+            params.append(match_expr)
     if cpf_cnpj:
         clean = re.sub(r'[^0-9]', '', cpf_cnpj)
-        conditions_ai.append('CPF_CNPJ_NORM LIKE ?')
-        conditions_te.append('CPF_CNPJ_NORM LIKE ?')
-        params.append(f'%{clean}%')
+        if len(clean) >= 11:
+            conditions_ai.append('CPF_CNPJ_NORM = ?')
+            conditions_te.append('CPF_CNPJ_NORM = ?')
+        else:
+            conditions_ai.append('CPF_CNPJ_NORM LIKE ?')
+            conditions_te.append('CPF_CNPJ_NORM LIKE ?')
+            clean = f'%{clean}%'
+        params.append(clean)
 
     where_ai = " AND ".join(conditions_ai) if conditions_ai else "1=1"
     where_te = " AND ".join(conditions_te) if conditions_te else "1=1"

@@ -167,6 +167,47 @@ def create_fts(conn):
     conn.execute("""
         INSERT INTO fts_embargos(fts_embargos) VALUES('rebuild')
     """)
+
+    # FTS for fast name search on normalized names
+    print("  Creating FTS name indexes...")
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_ai_nome USING fts5(
+            NOME_INFRATOR_NORM,
+            content='autos_infracao',
+            content_rowid='rowid'
+        )
+    """)
+    conn.execute("INSERT INTO fts_ai_nome(fts_ai_nome) VALUES('rebuild')")
+
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_te_nome USING fts5(
+            NOME_EMBARGADO_NORM,
+            content='termos_embargo',
+            content_rowid='rowid'
+        )
+    """)
+    conn.execute("INSERT INTO fts_te_nome(fts_te_nome) VALUES('rebuild')")
+
+    # FTS for fast municipio search
+    print("  Creating FTS municipio indexes...")
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_ai_mun USING fts5(
+            MUNICIPIO_NORM,
+            content='autos_infracao',
+            content_rowid='rowid'
+        )
+    """)
+    conn.execute("INSERT INTO fts_ai_mun(fts_ai_mun) VALUES('rebuild')")
+
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_te_mun USING fts5(
+            MUNICIPIO_NORM,
+            content='termos_embargo',
+            content_rowid='rowid'
+        )
+    """)
+    conn.execute("INSERT INTO fts_te_mun(fts_te_mun) VALUES('rebuild')")
+
     conn.commit()
 
 
