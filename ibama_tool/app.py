@@ -13,7 +13,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-m
 
 # Login credentials (set via environment variables on Render)
 APP_USER = os.environ.get("APP_USER", "contato@diovanefranco.com.br")
-APP_PASS = os.environ.get("APP_PASS", "PantheraLeo.11")
+APP_PASS = os.environ.get("APP_PASS", "Australopithecus.11")
 
 
 def login_required(f):
