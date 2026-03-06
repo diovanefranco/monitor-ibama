@@ -12,6 +12,10 @@ from datetime import datetime
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
+# Ensure unbuffered output for build logs
+os.environ.setdefault('PYTHONUNBUFFERED', '1')
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+
 # SEMA-MT GeoServer uses a self-signed certificate chain
 _SSL_CTX = ssl.create_default_context()
 _SSL_CTX.check_hostname = False
@@ -217,5 +221,6 @@ if __name__ == "__main__":
     if has_any_data:
         rebuild_db()
     else:
-        print("\nNenhum arquivo de dados encontrado. Impossivel construir DB.")
-        sys.exit(1)
+        print("\nNenhum arquivo de dados encontrado. SEMA DB nao sera criado.")
+        print("O sistema continuara funcionando apenas com dados do IBAMA.")
+        sys.exit(0)  # Exit cleanly - don't break the build
