@@ -415,7 +415,7 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
 
     # Recent active autos (last 10)
     active_autos.sort(key=lambda r: r.get('DAT_HORA_AUTO_INFRACAO', ''), reverse=True)
-    recent_ai = active_autos[:10]
+    recent_ai = active_autos
 
     # === SINGLE QUERY: fetch all matching embargos at once ===
     te_rows = conn.execute(f"""
@@ -463,7 +463,7 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
         "autos_infracao": ai_summary,
         "termos_embargo": te_summary,
         "ultimos_autos": recent_ai,
-        "embargos_ativos": active_embargos[:10],
+        "embargos_ativos": active_embargos,
     }
 
 

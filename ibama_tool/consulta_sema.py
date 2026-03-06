@@ -284,7 +284,7 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
             'ultimo': max(datas) if datas else None,
             'valor_total': fmt_valor(total_valor),
             'valor_total_float': total_valor,
-            'recentes': items[:10],
+            'recentes': items,
         }
 
     conn.close()

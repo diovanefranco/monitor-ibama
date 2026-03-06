@@ -40,6 +40,7 @@
         .badge-legado { background: #ef6c00; font-size: .7rem; }
         .badge-desc { background: #6a1b9a; font-size: .7rem; }
         .badge-termos { background: #00838f; font-size: .7rem; }
+        .btn-pdf { font-size: .8rem; }
     </style>
 </head>
 <body>
@@ -378,14 +379,32 @@
     </div><!-- /container -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
     <script>
     const UFS = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+
+    // ---- LOGO FOR PDF (preload as base64) ----
+    let _logoBase64 = null;
+    (function preloadLogo() {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            c.getContext('2d').drawImage(img, 0, 0);
+            _logoBase64 = c.toDataURL('image/png');
+        };
+        img.src = '/static/logo.png';
+    })();
+
+    // ---- RESULTS CACHE FOR PDF ----
+    let _lastResults = {};
 
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.uf-select').forEach(sel => {
             UFS.forEach(uf => { const o = document.createElement('option'); o.value = uf; o.textContent = uf; sel.appendChild(o); });
         });
-        // IBAMA stats
         fetch('/api/stats').then(r => r.json()).then(d => {
             const ibStats = `IBAMA: ${(d.autos_infracao||0).toLocaleString('pt-BR')} autos, ${(d.termos_embargo||0).toLocaleString('pt-BR')} embargos`;
             fetch('/api/sema/stats').then(r => r.json()).then(s => {
@@ -420,6 +439,11 @@
         if (fonte === 'SIGA_TERMOS') return '<span class="badge badge-termos">TERMOS</span>';
         return '<span class="badge bg-secondary">' + esc(fonte||'') + '</span>';
     }
+    function showCount(elId, total, showing, pdfKey) {
+        let html = `${total} resultados (exibindo ${showing})`;
+        if (pdfKey && showing > 0) html += ` <button class="btn btn-sm btn-outline-danger btn-pdf ms-2" onclick="gerarPdfPesquisa('${pdfKey}')">PDF</button>`;
+        document.getElementById(elId).innerHTML = html;
+    }
 
     // ---- DETAIL TOGGLE (generic) ----
     function toggleDetail(btn, rec) {
@@ -453,7 +477,8 @@
         fetch('/api/autos?'+p).then(r=>r.json()).then(d => {
             spin('spin-ib-autos',false);
             if (d.error) { alert(d.error); return; }
-            document.getElementById('count-ib-autos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            _lastResults['ib-autos'] = { results: d.results, params: Object.fromEntries(p), title: 'Autos de Infracao - IBAMA' };
+            showCount('count-ib-autos', d.total, d.showing, 'ib-autos');
             const t = document.getElementById('table-ib-autos');
             t.querySelector('thead').innerHTML = '<tr><th></th><th>Data</th><th>Auto</th><th>Processo</th><th>Infrator</th><th>CPF/CNPJ</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
@@ -483,7 +508,8 @@
         fetch('/api/embargos?'+p).then(r=>r.json()).then(d => {
             spin('spin-ib-embargos',false);
             if (d.error) { alert(d.error); return; }
-            document.getElementById('count-ib-embargos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            _lastResults['ib-embargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Termos de Embargo - IBAMA' };
+            showCount('count-ib-embargos', d.total, d.showing, 'ib-embargos');
             const t = document.getElementById('table-ib-embargos');
             t.querySelector('thead').innerHTML = '<tr><th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>CPF/CNPJ</th><th>UF</th><th>Municipio</th><th>Area (ha)</th><th>Situacao</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
@@ -511,7 +537,8 @@
         fetch(`/api/texto?q=${encodeURIComponent(q)}&tabela=${tabela}&limit=${limit}`).then(r=>r.json()).then(d => {
             spin('spin-ib-texto',false);
             if (d.error) { alert(d.error + (d.hint ? '\n'+d.hint : '')); return; }
-            document.getElementById('count-ib-texto').textContent = `${d.total.toLocaleString('pt-BR')} resultados (exibindo ${d.showing})`;
+            _lastResults['ib-texto'] = { results: d.results, params: {q, tabela}, title: `Busca Livre "${q}" (${tabela}) - IBAMA`, _tabela: tabela };
+            showCount('count-ib-texto', d.total.toLocaleString('pt-BR'), d.showing, 'ib-texto');
             const t = document.getElementById('table-ib-texto');
             t.querySelector('thead').innerHTML = tabela==='autos'
                 ? '<tr><th></th><th>Data</th><th>Auto</th><th>Infrator</th><th>UF</th><th>Municipio</th><th>Descricao</th><th>Valor</th></tr>'
@@ -547,27 +574,33 @@
         fetch('/api/resumo?'+p).then(r=>r.json()).then(d => {
             spin('spin-ib-resumo',false);
             if (d.error) { alert(d.error); return; }
+            _lastResults['ib-resumo'] = { data: d, params: {nome, cpf_cnpj: cpf} };
             renderIbResumo(d);
         }).catch(e => { spin('spin-ib-resumo',false); alert('Erro: '+e); });
     }
 
     function renderIbResumo(d) {
         const ai = d.autos_infracao, te = d.termos_embargo;
-        let h = '<div class="row g-3 mb-4">';
+        let h = '<div class="d-flex justify-content-end mb-2"><button class="btn btn-outline-danger btn-pdf" onclick="gerarPdfIbamaResumo()">PDF Relatorio Completo</button></div>';
+        h += '<div class="row g-3 mb-4">';
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${ai.total_autos||0}</h2><div class="text-muted">Autos</div><small>${ai.autos_ativos||0} ativos / ${ai.autos_cancelados||0} cancelados</small></div></div>`;
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${te.total_embargos||0}</h2><div class="text-muted">Embargos</div><small>${te.embargos_ativos||0} ativos</small></div></div>`;
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${esc(ai.valor_total||'N/A')}</h2><div class="text-muted">Valor Total</div></div></div>`;
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${fmtData(ai.primeiro_auto)} - ${fmtData(ai.ultimo_auto)}</h2><div class="text-muted">Periodo</div><small>UFs: ${esc(ai.ufs||'-')}</small></div></div>`;
         h += '</div>';
         if (d.ultimos_autos && d.ultimos_autos.length) {
-            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Ultimos Autos</h5><table class="table table-sm"><thead><tr><th>Data</th><th>Auto</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>';
+            const n = d.ultimos_autos.length;
+            h += `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>Autos de Infracao <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#collapse-ib-autos">Mostrar/Ocultar</button></h5>`;
+            h += `<div class="collapse show" id="collapse-ib-autos"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data</th><th>Auto</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>`;
             d.ultimos_autos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td>${esc(r.NUM_AUTO_INFRACAO)}</td><td>${esc(r.TIPO_INFRACAO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td><td>${esc(r.DES_STATUS_FORMULARIO)}</td></tr>`; });
-            h += '</tbody></table></div></div>';
+            h += '</tbody></table></div></div></div></div>';
         }
         if (d.embargos_ativos && d.embargos_ativos.length) {
-            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Embargos Ativos</h5><table class="table table-sm"><thead><tr><th>Data</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>';
+            const n = d.embargos_ativos.length;
+            h += `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>Embargos Ativos <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#collapse-ib-emb">Mostrar/Ocultar</button></h5>`;
+            h += `<div class="collapse show" id="collapse-ib-emb"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>`;
             d.embargos_ativos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_EMBARGO)}</td><td>${esc(r.NUM_TAD)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${esc(r.DES_LOCALIZACAO)}</td></tr>`; });
-            h += '</tbody></table></div></div>';
+            h += '</tbody></table></div></div></div></div>';
         }
         document.getElementById('ib-resumo-content').innerHTML = h;
     }
@@ -585,7 +618,8 @@
         fetch('/api/sema/autos?'+p).then(r=>r.json()).then(d => {
             spin('spin-sm-autos',false);
             if (d.error) { alert(d.error); return; }
-            document.getElementById('count-sm-autos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            _lastResults['sm-autos'] = { results: d.results, params: Object.fromEntries(p), title: 'Autos de Infracao - SEMA-MT' };
+            showCount('count-sm-autos', d.total, d.showing, 'sm-autos');
             const t = document.getElementById('table-sm-autos');
             t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Documento</th><th>Processo</th><th>Nome/Razao Social</th><th>CPF/CNPJ</th><th>Municipio</th><th>Valor Multa</th><th>Situacao</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
@@ -611,7 +645,8 @@
         fetch('/api/sema/termos?'+p).then(r=>r.json()).then(d => {
             spin('spin-sm-termos',false);
             if (d.error) { alert(d.error); return; }
-            document.getElementById('count-sm-termos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            _lastResults['sm-termos'] = { results: d.results, params: Object.fromEntries(p), title: 'Outros Termos - SEMA-MT' };
+            showCount('count-sm-termos', d.total, d.showing, 'sm-termos');
             const t = document.getElementById('table-sm-termos');
             t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Processo</th><th>Nome/Razao Social</th><th>CPF/CNPJ</th><th>Municipio</th><th>Atividade</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
@@ -637,7 +672,8 @@
         fetch('/api/sema/embargos?'+p).then(r=>r.json()).then(d => {
             spin('spin-sm-embargos',false);
             if (d.error) { alert(d.error); return; }
-            document.getElementById('count-sm-embargos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            _lastResults['sm-embargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Embargos - SEMA-MT' };
+            showCount('count-sm-embargos', d.total, d.showing, 'sm-embargos');
             const t = document.getElementById('table-sm-embargos');
             t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Embargo</th><th>Auto</th><th>Processo</th><th>Nome</th><th>CPF/CNPJ</th><th>Municipio</th><th>Propriedade</th><th>Area (ha)</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
@@ -664,7 +700,8 @@
         fetch('/api/sema/desembargos?'+p).then(r=>r.json()).then(d => {
             spin('spin-sm-desembargos',false);
             if (d.error) { alert(d.error); return; }
-            document.getElementById('count-sm-desembargos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            _lastResults['sm-desembargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Desembargos - SEMA-MT' };
+            showCount('count-sm-desembargos', d.total, d.showing, 'sm-desembargos');
             const t = document.getElementById('table-sm-desembargos');
             t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Documento</th><th>Auto</th><th>Processo</th><th>Nome</th><th>CPF/CNPJ</th><th>Municipio</th><th>Propriedade</th><th>Area (ha)</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
@@ -691,13 +728,15 @@
         fetch('/api/sema/resumo?'+p).then(r=>r.json()).then(d => {
             spin('spin-sm-resumo',false);
             if (d.error) { alert(d.error); return; }
+            _lastResults['sm-resumo'] = { data: d, params: {nome, cpf_cnpj: cpf} };
             renderSmResumo(d);
         }).catch(e => { spin('spin-sm-resumo',false); alert('Erro: '+e); });
     }
 
     function renderSmResumo(d) {
         const ai = d.autos_infracao||{}, ot = d.outros_termos||{}, em = d.embargos||{}, de = d.desembargos||{};
-        let h = '<div class="row g-3 mb-4">';
+        let h = '<div class="d-flex justify-content-end mb-2"><button class="btn btn-outline-danger btn-pdf" onclick="gerarPdfSemaResumo()">PDF Relatorio Completo</button></div>';
+        h += '<div class="row g-3 mb-4">';
         h += `<div class="col-md-2"><div class="card stats-card"><h2>${ai.total||0}</h2><div class="text-muted">Autos Infracao</div></div></div>`;
         h += `<div class="col-md-2"><div class="card stats-card"><h2>${ot.total||0}</h2><div class="text-muted">Outros Termos</div></div></div>`;
         h += `<div class="col-md-2"><div class="card stats-card"><h2>${em.total||0}</h2><div class="text-muted">Embargos</div></div></div>`;
@@ -706,25 +745,395 @@
         h += `<div class="col-md-2"><div class="card stats-card"><h2>${fmtData(ai.primeiro)} - ${fmtData(ai.ultimo)}</h2><div class="text-muted">Periodo</div><small>${esc(ai.municipios||'')}</small></div></div>`;
         h += '</div>';
 
-        // Recentes de cada tabela
-        function renderRecentes(titulo, recentes, showValor) {
+        function renderRecentes(titulo, recentes, showValor, collapseId) {
             if (!recentes || !recentes.length) return '';
-            let s = `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">${titulo}</h5><table class="table table-sm"><thead><tr><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Municipio</th>${showValor?'<th>Valor</th>':''}<th>Situacao</th></tr></thead><tbody>`;
+            const n = recentes.length;
+            let s = `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>${titulo} <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#${collapseId}">Mostrar/Ocultar</button></h5>`;
+            s += `<div class="collapse show" id="${collapseId}"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Municipio</th>${showValor?'<th>Valor</th>':''}<th>Situacao</th><th>Descricao</th></tr></thead><tbody>`;
             recentes.forEach(r => {
+                const desc = (r.DESCRICAO_OCORRENCIA||r.DESCRICAO_DANO||'').substring(0,60);
                 s += `<tr><td>${fonteBadge(r.FONTE)}</td><td>${fmtData(r.DATA_DOCUMENTO)}</td><td>${esc(r.TIPO_DOCUMENTO)}</td><td>${esc(r.NUMERO_DOCUMENTO)}</td><td>${esc(r.MUNICIPIO)}</td>`;
                 if (showValor) s += `<td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td>`;
-                s += `<td>${esc(r.SITUACAO||'')}</td></tr>`;
+                s += `<td>${esc(r.SITUACAO||'')}</td><td title="${esc(r.DESCRICAO_OCORRENCIA||'')}">${esc(desc)}</td></tr>`;
             });
-            s += '</tbody></table></div></div>';
+            s += '</tbody></table></div></div></div></div>';
             return s;
         }
 
-        h += renderRecentes('Autos de Infracao', ai.recentes, true);
-        h += renderRecentes('Outros Termos (Inspecao, Notificacao, etc.)', ot.recentes, false);
-        h += renderRecentes('Embargos', em.recentes, false);
-        h += renderRecentes('Desembargos', de.recentes, false);
+        h += renderRecentes('Autos de Infracao', ai.recentes, true, 'collapse-sm-ai');
+        h += renderRecentes('Outros Termos (Inspecao, Notificacao, etc.)', ot.recentes, false, 'collapse-sm-ot');
+        h += renderRecentes('Embargos', em.recentes, false, 'collapse-sm-em');
+        h += renderRecentes('Desembargos', de.recentes, false, 'collapse-sm-de');
 
         document.getElementById('sm-resumo-content').innerHTML = h;
+    }
+
+    // ================================================================
+    //                    PDF GENERATION
+    // ================================================================
+    const PDF_CONFIGS = {
+        'ib-autos': {
+            title: 'Autos de Infracao - IBAMA',
+            columns: [
+                {h:'Data', f:'DAT_HORA_AUTO_INFRACAO', fmt:'date'},
+                {h:'Auto', f:'NUM_AUTO_INFRACAO'},
+                {h:'Processo', f:r=>(r.NU_PROCESSO_FORMATADO||r.NUM_PROCESSO||'')},
+                {h:'Infrator', f:'NOME_INFRATOR'},
+                {h:'CPF/CNPJ', f:'CPF_CNPJ_INFRATOR'},
+                {h:'Tipo', f:'TIPO_INFRACAO'},
+                {h:'UF', f:'UF'},
+                {h:'Municipio', f:'MUNICIPIO'},
+                {h:'Valor', f:'VAL_AUTO_INFRACAO', fmt:'valor_br'},
+                {h:'Status', f:'DES_STATUS_FORMULARIO'}
+            ]
+        },
+        'ib-embargos': {
+            title: 'Termos de Embargo - IBAMA',
+            columns: [
+                {h:'Data', f:'DAT_EMBARGO', fmt:'date'},
+                {h:'TAD', f:'NUM_TAD'},
+                {h:'Processo', f:'NUM_PROCESSO'},
+                {h:'Embargado', f:'NOME_EMBARGADO'},
+                {h:'CPF/CNPJ', f:'CPF_CNPJ_EMBARGADO'},
+                {h:'UF', f:'UF'},
+                {h:'Municipio', f:'MUNICIPIO'},
+                {h:'Area (ha)', f:'QTD_AREA_EMBARGADA'},
+                {h:'Situacao', f:r=>{ if(r.SIT_CANCELADO==='S') return 'Cancelado'; if(r.SIT_DESEMBARGO) return 'Desembargado'; return 'Embargado'; }}
+            ]
+        },
+        'ib-texto': {
+            title: 'Busca Livre - IBAMA',
+            columns: 'dynamic'
+        },
+        'sm-autos': {
+            title: 'Autos de Infracao - SEMA-MT',
+            columns: [
+                {h:'Fonte', f:'FONTE'},
+                {h:'Data', f:'DATA_DOCUMENTO', fmt:'date'},
+                {h:'Documento', f:'NUMERO_DOCUMENTO'},
+                {h:'Processo', f:'NUMERO_PROCESSO'},
+                {h:'Nome', f:'NOME_RAZAO_SOCIAL'},
+                {h:'CPF/CNPJ', f:'CPF_CNPJ'},
+                {h:'Municipio', f:'MUNICIPIO'},
+                {h:'Valor', f:'VALOR_TOTAL_MULTA', fmt:'valor_num'},
+                {h:'Situacao', f:'SITUACAO'}
+            ]
+        },
+        'sm-termos': {
+            title: 'Outros Termos - SEMA-MT',
+            columns: [
+                {h:'Fonte', f:'FONTE'},
+                {h:'Data', f:'DATA_DOCUMENTO', fmt:'date'},
+                {h:'Tipo', f:'TIPO_DOCUMENTO'},
+                {h:'Documento', f:'NUMERO_DOCUMENTO'},
+                {h:'Processo', f:'NUMERO_PROCESSO'},
+                {h:'Nome', f:'NOME_RAZAO_SOCIAL'},
+                {h:'CPF/CNPJ', f:'CPF_CNPJ'},
+                {h:'Municipio', f:'MUNICIPIO'},
+                {h:'Atividade', f:'ATIVIDADE'}
+            ]
+        },
+        'sm-embargos': {
+            title: 'Embargos - SEMA-MT',
+            columns: [
+                {h:'Fonte', f:'FONTE'},
+                {h:'Data', f:'DATA_DOCUMENTO', fmt:'date'},
+                {h:'Embargo', f:'NUMERO_DOCUMENTO'},
+                {h:'Auto', f:'NUMERO_AUTO_INFRACAO'},
+                {h:'Processo', f:'NUMERO_PROCESSO'},
+                {h:'Nome', f:'NOME_RAZAO_SOCIAL'},
+                {h:'CPF/CNPJ', f:'CPF_CNPJ'},
+                {h:'Municipio', f:'MUNICIPIO'},
+                {h:'Propriedade', f:'PROPRIEDADE'},
+                {h:'Area (ha)', f:'AREA_HA'}
+            ]
+        },
+        'sm-desembargos': {
+            title: 'Desembargos - SEMA-MT',
+            columns: [
+                {h:'Fonte', f:'FONTE'},
+                {h:'Data', f:'DATA_DOCUMENTO', fmt:'date'},
+                {h:'Documento', f:'NUMERO_DOCUMENTO'},
+                {h:'Auto', f:'NUMERO_AUTO_INFRACAO'},
+                {h:'Processo', f:'NUMERO_PROCESSO'},
+                {h:'Nome', f:'NOME_RAZAO_SOCIAL'},
+                {h:'CPF/CNPJ', f:'CPF_CNPJ'},
+                {h:'Municipio', f:'MUNICIPIO'},
+                {h:'Propriedade', f:'PROPRIEDADE'},
+                {h:'Area (ha)', f:'AREA_HA'}
+            ]
+        }
+    };
+
+    function _pdfVal(col, r) {
+        if (typeof col.f === 'function') return col.f(r) || '-';
+        const v = r[col.f];
+        if (!v && v !== 0) return '-';
+        if (col.fmt === 'date') return fmtData(v);
+        if (col.fmt === 'valor_br') { try { const n=parseFloat(String(v).replace(/\./g,'').replace(',','.')); return isNaN(n)||n===0?'-':'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2}); } catch{return v;} }
+        if (col.fmt === 'valor_num') { try { const n=parseFloat(v); return isNaN(n)||n===0?'-':'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2}); } catch{return v;} }
+        return String(v);
+    }
+
+    function _pdfHeader(doc, title) {
+        const pw = doc.internal.pageSize.getWidth();
+        doc.setFillColor(27, 94, 32);
+        doc.rect(0, 0, pw, 30, 'F');
+        if (_logoBase64) { try { doc.addImage(_logoBase64, 'PNG', 10, 4, 22, 22); } catch(e){} }
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(14); doc.setFont('helvetica','bold');
+        doc.text(title, _logoBase64 ? 36 : 14, 13);
+        doc.setFontSize(9); doc.setFont('helvetica','normal');
+        const now = new Date();
+        doc.text('Gerado em: ' + now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR'), _logoBase64 ? 36 : 14, 20);
+        doc.text('Consulta de AI e TEI - Diovane Franco Advogados', _logoBase64 ? 36 : 14, 25);
+    }
+
+    function _pdfFooter(doc) {
+        const total = doc.internal.getNumberOfPages();
+        const pw = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
+        for (let i = 1; i <= total; i++) {
+            doc.setPage(i);
+            doc.setFontSize(7); doc.setTextColor(150);
+            doc.text('Pagina ' + i + ' de ' + total, pw/2, ph-6, {align:'center'});
+            doc.text('Documento gerado automaticamente - Consulta de AI e TEI', pw/2, ph-3, {align:'center'});
+        }
+    }
+
+    function gerarPdfPesquisa(key) {
+        if (!window.jspdf) { alert('Biblioteca PDF nao carregada. Verifique sua conexao.'); return; }
+        const cached = _lastResults[key];
+        if (!cached || !cached.results || !cached.results.length) { alert('Execute uma pesquisa primeiro.'); return; }
+
+        const cfg = PDF_CONFIGS[key];
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4');
+        const margin = 14;
+
+        _pdfHeader(doc, cfg.title);
+        let y = 36;
+
+        // Search criteria
+        doc.setTextColor(0); doc.setFontSize(9); doc.setFont('helvetica','bold');
+        doc.text('Filtros aplicados:', margin, y); y += 4;
+        doc.setFont('helvetica','normal');
+        const params = cached.params || {};
+        const pLines = [];
+        for (const [k,v] of Object.entries(params)) { if (v && k!=='limit') pLines.push(k.replace(/_/g,' ')+': '+v); }
+        if (pLines.length) { doc.text(pLines.join('  |  '), margin, y); y += 5; }
+        doc.text('Total de registros: ' + cached.results.length, margin, y); y += 6;
+
+        // Determine columns
+        let columns;
+        if (cfg.columns === 'dynamic') {
+            const tab = cached._tabela || 'autos';
+            columns = tab === 'autos' ? [
+                {h:'Data',f:'DAT_HORA_AUTO_INFRACAO',fmt:'date'},{h:'Auto',f:'NUM_AUTO_INFRACAO'},
+                {h:'Infrator',f:'NOME_INFRATOR'},{h:'UF',f:'UF'},{h:'Municipio',f:'MUNICIPIO'},
+                {h:'Descricao',f:'DES_AUTO_INFRACAO'},{h:'Valor',f:'VAL_AUTO_INFRACAO',fmt:'valor_br'}
+            ] : [
+                {h:'Data',f:'DAT_EMBARGO',fmt:'date'},{h:'TAD',f:'NUM_TAD'},
+                {h:'Embargado',f:'NOME_EMBARGADO'},{h:'UF',f:'UF'},{h:'Municipio',f:'MUNICIPIO'},
+                {h:'Descricao',f:'DES_TAD'},{h:'Area',f:'QTD_AREA_EMBARGADA'}
+            ];
+        } else {
+            columns = cfg.columns;
+        }
+
+        const head = [columns.map(c => c.h)];
+        const body = cached.results.map(r => columns.map(c => _pdfVal(c, r)));
+
+        doc.autoTable({
+            startY: y, head, body,
+            theme: 'striped',
+            headStyles: { fillColor: [46, 125, 50], fontSize: 7 },
+            bodyStyles: { fontSize: 6.5 },
+            margin: { left: margin, right: margin },
+            styles: { cellPadding: 1.5 }
+        });
+
+        _pdfFooter(doc);
+        const fname = cfg.title.replace(/[^a-zA-Z0-9]/g,'_').substring(0,40) + '.pdf';
+        doc.save(fname);
+    }
+
+    function gerarPdfSemaResumo() {
+        if (!window.jspdf) { alert('Biblioteca PDF nao carregada.'); return; }
+        const cached = _lastResults['sm-resumo'];
+        if (!cached) { alert('Execute uma consulta de resumo primeiro.'); return; }
+        const d = cached.data, params = cached.params;
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pw = doc.internal.pageSize.getWidth();
+        const margin = 14;
+
+        _pdfHeader(doc, 'Relatorio Ambiental - SEMA-MT');
+        let y = 36;
+
+        doc.setTextColor(0); doc.setFontSize(9); doc.setFont('helvetica','bold');
+        doc.text('Criterios da Pesquisa', margin, y); y += 5;
+        doc.setFont('helvetica','normal');
+        if (params.nome) { doc.text('Nome: ' + params.nome, margin, y); y += 4; }
+        if (params.cpf_cnpj) { doc.text('CPF/CNPJ: ' + params.cpf_cnpj, margin, y); y += 4; }
+        y += 3;
+
+        const ai=d.autos_infracao||{}, ot=d.outros_termos||{}, em=d.embargos||{}, de=d.desembargos||{};
+
+        doc.setFont('helvetica','bold'); doc.setFontSize(11);
+        doc.text('Resumo Geral', margin, y); y += 5;
+
+        doc.autoTable({
+            startY: y,
+            head: [['Categoria','Total','Valor Multas','Periodo','Municipios']],
+            body: [
+                ['Autos de Infracao', String(ai.total||0), ai.valor_total||'N/A',
+                 (fmtData(ai.primeiro)||'-')+' a '+(fmtData(ai.ultimo)||'-'), ai.municipios||'-'],
+                ['Outros Termos', String(ot.total||0), ot.valor_total||'N/A',
+                 (fmtData(ot.primeiro)||'-')+' a '+(fmtData(ot.ultimo)||'-'), ot.municipios||'-'],
+                ['Embargos', String(em.total||0), em.valor_total||'N/A',
+                 (fmtData(em.primeiro)||'-')+' a '+(fmtData(em.ultimo)||'-'), em.municipios||'-'],
+                ['Desembargos', String(de.total||0), de.valor_total||'N/A',
+                 (fmtData(de.primeiro)||'-')+' a '+(fmtData(de.ultimo)||'-'), de.municipios||'-'],
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [27,94,32], fontSize: 8 },
+            bodyStyles: { fontSize: 7.5 },
+            margin: { left: margin, right: margin }
+        });
+        y = doc.lastAutoTable.finalY + 8;
+
+        function addCatTable(title, records, showValor) {
+            if (!records || !records.length) return;
+            if (y > 250) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica','bold'); doc.setFontSize(10);
+            doc.setTextColor(27,94,32);
+            doc.text(title + ' (' + records.length + ' registros)', margin, y); y += 3;
+            doc.setTextColor(0);
+            const head = [['Fonte','Data','Tipo','Documento','Municipio']];
+            if (showValor) head[0].push('Valor');
+            head[0].push('Situacao','Descricao');
+            const body = records.map(r => {
+                const row = [r.FONTE||'-', fmtData(r.DATA_DOCUMENTO), r.TIPO_DOCUMENTO||'-', r.NUMERO_DOCUMENTO||'-', r.MUNICIPIO||'-'];
+                if (showValor) { try { const n=parseFloat(r.VALOR_TOTAL_MULTA); row.push(isNaN(n)||n===0?'-':'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2})); } catch{row.push('-');} }
+                row.push(r.SITUACAO||'-');
+                row.push((r.DESCRICAO_OCORRENCIA||r.DESCRICAO_DANO||'').substring(0,80));
+                return row;
+            });
+            doc.autoTable({
+                startY: y, head, body,
+                theme: 'striped',
+                headStyles: { fillColor: [46,125,50], fontSize: 7 },
+                bodyStyles: { fontSize: 6.5 },
+                margin: { left: margin, right: margin },
+                styles: { cellPadding: 1.5 }
+            });
+            y = doc.lastAutoTable.finalY + 8;
+        }
+
+        addCatTable('Autos de Infracao', ai.recentes, true);
+        addCatTable('Outros Termos', ot.recentes, false);
+        addCatTable('Embargos', em.recentes, false);
+        addCatTable('Desembargos', de.recentes, false);
+
+        _pdfFooter(doc);
+        const nome = (params.nome||params.cpf_cnpj||'consulta').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40);
+        doc.save('relatorio_sema_' + nome + '.pdf');
+    }
+
+    function gerarPdfIbamaResumo() {
+        if (!window.jspdf) { alert('Biblioteca PDF nao carregada.'); return; }
+        const cached = _lastResults['ib-resumo'];
+        if (!cached) { alert('Execute uma consulta de resumo primeiro.'); return; }
+        const d = cached.data, params = cached.params;
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const margin = 14;
+
+        _pdfHeader(doc, 'Relatorio Ambiental - IBAMA');
+        let y = 36;
+
+        doc.setTextColor(0); doc.setFontSize(9); doc.setFont('helvetica','bold');
+        doc.text('Criterios da Pesquisa', margin, y); y += 5;
+        doc.setFont('helvetica','normal');
+        if (params.nome) { doc.text('Nome: ' + params.nome, margin, y); y += 4; }
+        if (params.cpf_cnpj) { doc.text('CPF/CNPJ: ' + params.cpf_cnpj, margin, y); y += 4; }
+        y += 3;
+
+        const ai = d.autos_infracao, te = d.termos_embargo;
+
+        doc.setFont('helvetica','bold'); doc.setFontSize(11);
+        doc.text('Resumo Geral', margin, y); y += 5;
+
+        doc.autoTable({
+            startY: y,
+            head: [['Indicador','Valor']],
+            body: [
+                ['Total Autos', String(ai.total_autos||0)],
+                ['Autos Ativos', String(ai.autos_ativos||0)],
+                ['Autos Cancelados', String(ai.autos_cancelados||0)],
+                ['Total Embargos', String(te.total_embargos||0)],
+                ['Embargos Ativos', String(te.embargos_ativos||0)],
+                ['Valor Total Multas', ai.valor_total||'N/A'],
+                ['Periodo', (fmtData(ai.primeiro_auto)||'-')+' a '+(fmtData(ai.ultimo_auto)||'-')],
+                ['UFs', ai.ufs||'-'],
+                ['Municipios (Embargos)', te.municipios||'-']
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [27,94,32], fontSize: 8 },
+            bodyStyles: { fontSize: 7.5 },
+            margin: { left: margin, right: margin },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
+        });
+        y = doc.lastAutoTable.finalY + 8;
+
+        if (d.ultimos_autos && d.ultimos_autos.length) {
+            if (y > 250) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(27,94,32);
+            doc.text('Autos de Infracao (' + d.ultimos_autos.length + ' registros)', margin, y); y += 3;
+            doc.setTextColor(0);
+            doc.autoTable({
+                startY: y,
+                head: [['Data','Auto','Tipo','UF','Municipio','Valor','Status','Descricao']],
+                body: d.ultimos_autos.map(r => [
+                    fmtData(r.DAT_HORA_AUTO_INFRACAO), r.NUM_AUTO_INFRACAO||'-', r.TIPO_INFRACAO||'-',
+                    r.UF||'-', r.MUNICIPIO||'-',
+                    (()=>{ try{const n=parseFloat(String(r.VAL_AUTO_INFRACAO).replace(/\./g,'').replace(',','.'));return isNaN(n)||n===0?'-':'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2});}catch{return '-';}})(),
+                    r.DES_STATUS_FORMULARIO||'-',
+                    (r.DES_AUTO_INFRACAO||'').substring(0,80)
+                ]),
+                theme: 'striped',
+                headStyles: { fillColor: [46,125,50], fontSize: 7 },
+                bodyStyles: { fontSize: 6.5 },
+                margin: { left: margin, right: margin },
+                styles: { cellPadding: 1.5 }
+            });
+            y = doc.lastAutoTable.finalY + 8;
+        }
+
+        if (d.embargos_ativos && d.embargos_ativos.length) {
+            if (y > 250) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(27,94,32);
+            doc.text('Embargos Ativos (' + d.embargos_ativos.length + ' registros)', margin, y); y += 3;
+            doc.setTextColor(0);
+            doc.autoTable({
+                startY: y,
+                head: [['Data','TAD','UF','Municipio','Area (ha)','Localizacao','Descricao']],
+                body: d.embargos_ativos.map(r => [
+                    fmtData(r.DAT_EMBARGO), r.NUM_TAD||'-', r.UF||'-', r.MUNICIPIO||'-',
+                    r.QTD_AREA_EMBARGADA||'-', r.DES_LOCALIZACAO||'-', (r.DES_TAD||'').substring(0,80)
+                ]),
+                theme: 'striped',
+                headStyles: { fillColor: [46,125,50], fontSize: 7 },
+                bodyStyles: { fontSize: 6.5 },
+                margin: { left: margin, right: margin },
+                styles: { cellPadding: 1.5 }
+            });
+        }
+
+        _pdfFooter(doc);
+        const nome = (params.nome||params.cpf_cnpj||'consulta').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40);
+        doc.save('relatorio_ibama_' + nome + '.pdf');
     }
     </script>
 </body>
