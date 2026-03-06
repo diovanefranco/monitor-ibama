@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-SEMA-MT Query Tool - Search autos de infracao and areas embargadas from SEMA-MT.
+SEMA-MT Query Tool v2 - Search all 4 SEMA tables.
+Tables: sema_autos_infracao, sema_outros_termos, sema_embargos, sema_desembargos
 Follows same patterns as consulta.py (IBAMA).
 """
 import sqlite3, sys, json, os, unicodedata, re
@@ -37,10 +38,24 @@ def _fts_match_expr(terms):
     return ' '.join(f'"{w}"' for w in words if w)
 
 
-def search_autos(nome=None, cpf_cnpj=None, municipio=None,
-                 num_auto=None, num_processo=None, fonte=None,
-                 ano_inicio=None, ano_fim=None, limit=50):
-    """Search SEMA-MT autos de infracao."""
+def _strip_internal(results):
+    """Remove internal normalized columns from results."""
+    for r in results:
+        r.pop('NOME_NORM', None)
+        r.pop('MUNICIPIO_NORM', None)
+        r.pop('CPF_CNPJ_NORM', None)
+        r.pop('NUM_PROCESSO_NORM', None)
+
+
+# ============================================================
+# GENERIC SEARCH (shared by all 4 tables)
+# ============================================================
+
+def _generic_search(table_name, fts_prefix, nome=None, cpf_cnpj=None,
+                    municipio=None, num_doc=None, num_processo=None,
+                    num_auto=None, fonte=None,
+                    ano_inicio=None, ano_fim=None, limit=50):
+    """Generic search function for any SEMA table."""
     conn = get_conn()
     joins = []
     conditions = []
@@ -50,8 +65,9 @@ def search_autos(nome=None, cpf_cnpj=None, municipio=None,
         norm = strip_accents(nome).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            joins.append('JOIN fts_sema_ai_nome fn ON a.rowid = fn.rowid')
-            conditions.append('fn.fts_sema_ai_nome MATCH ?')
+            fts_table = f'fts_{fts_prefix}_nome'
+            joins.append(f'JOIN {fts_table} fn ON a.rowid = fn.rowid')
+            conditions.append(f'fn.{fts_table} MATCH ?')
             params.append(match_expr)
 
     if cpf_cnpj:
@@ -67,10 +83,14 @@ def search_autos(nome=None, cpf_cnpj=None, municipio=None,
         norm = strip_accents(municipio).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            joins.append('JOIN fts_sema_ai_mun fm ON a.rowid = fm.rowid')
-            conditions.append('fm.fts_sema_ai_mun MATCH ?')
+            fts_table = f'fts_{fts_prefix}_mun'
+            joins.append(f'JOIN {fts_table} fm ON a.rowid = fm.rowid')
+            conditions.append(f'fm.{fts_table} MATCH ?')
             params.append(match_expr)
 
+    if num_doc:
+        conditions.append('a.NUMERO_DOCUMENTO = ?')
+        params.append(num_doc)
     if num_auto:
         conditions.append('a.NUMERO_AUTO_INFRACAO = ?')
         params.append(num_auto)
@@ -82,10 +102,10 @@ def search_autos(nome=None, cpf_cnpj=None, municipio=None,
         conditions.append('a.FONTE = ?')
         params.append(fonte.upper())
     if ano_inicio:
-        conditions.append("a.DATA_AUTO >= ?")
+        conditions.append("a.DATA_DOCUMENTO >= ?")
         params.append(f"{ano_inicio}-01-01")
     if ano_fim:
-        conditions.append("a.DATA_AUTO <= ?")
+        conditions.append("a.DATA_DOCUMENTO <= ?")
         params.append(f"{ano_fim}-12-31")
 
     has_fts = bool(joins)
@@ -95,7 +115,7 @@ def search_autos(nome=None, cpf_cnpj=None, municipio=None,
     if has_fts:
         max_fetch = max(limit + 1, 5000)
         sql = f"""
-            SELECT a.* FROM sema_autos_infracao a
+            SELECT a.* FROM {table_name} a
             {join_clause}
             WHERE {where}
             LIMIT ?
@@ -103,15 +123,15 @@ def search_autos(nome=None, cpf_cnpj=None, municipio=None,
         params.append(max_fetch)
         rows = conn.execute(sql, params).fetchall()
         results = [dict(r) for r in rows]
-        results.sort(key=lambda r: r.get('DATA_AUTO', ''), reverse=True)
+        results.sort(key=lambda r: r.get('DATA_DOCUMENTO', ''), reverse=True)
         has_more = len(results) > limit
         results = results[:limit]
     else:
         fetch_limit = limit + 1
         sql = f"""
-            SELECT a.* FROM sema_autos_infracao a
+            SELECT a.* FROM {table_name} a
             WHERE {where}
-            ORDER BY a.DATA_AUTO DESC
+            ORDER BY a.DATA_DOCUMENTO DESC
             LIMIT ?
         """
         params.append(fetch_limit)
@@ -119,286 +139,233 @@ def search_autos(nome=None, cpf_cnpj=None, municipio=None,
         has_more = len(rows) > limit
         results = [dict(r) for r in rows[:limit]]
 
-    for r in results:
-        r.pop('NOME_NORM', None)
-        r.pop('MUNICIPIO_NORM', None)
-        r.pop('CPF_CNPJ_NORM', None)
-        r.pop('NUM_PROCESSO_NORM', None)
-
+    _strip_internal(results)
     conn.close()
     showing = len(results)
     total = f"{showing}+" if has_more else str(showing)
     return {"total": total, "showing": showing, "results": results}
+
+
+# ============================================================
+# PUBLIC SEARCH FUNCTIONS
+# ============================================================
+
+def search_autos(nome=None, cpf_cnpj=None, municipio=None,
+                 num_auto=None, num_processo=None, fonte=None,
+                 ano_inicio=None, ano_fim=None, limit=50):
+    """Search SEMA-MT autos de infracao."""
+    return _generic_search('sema_autos_infracao', 'sai',
+                          nome=nome, cpf_cnpj=cpf_cnpj, municipio=municipio,
+                          num_doc=num_auto, num_processo=num_processo,
+                          fonte=fonte, ano_inicio=ano_inicio, ano_fim=ano_fim,
+                          limit=limit)
+
+
+def search_termos(nome=None, cpf_cnpj=None, municipio=None,
+                  num_doc=None, num_processo=None, fonte=None,
+                  ano_inicio=None, ano_fim=None, limit=50):
+    """Search SEMA-MT outros termos (inspecao, notificacao, apreensao, etc.)."""
+    return _generic_search('sema_outros_termos', 'sot',
+                          nome=nome, cpf_cnpj=cpf_cnpj, municipio=municipio,
+                          num_doc=num_doc, num_processo=num_processo,
+                          fonte=fonte, ano_inicio=ano_inicio, ano_fim=ano_fim,
+                          limit=limit)
 
 
 def search_embargos(nome=None, cpf_cnpj=None, municipio=None,
                     num_embargo=None, num_processo=None, num_auto=None,
                     fonte=None, limit=50):
     """Search SEMA-MT areas embargadas."""
-    conn = get_conn()
-    joins = []
-    conditions = []
-    params = []
+    return _generic_search('sema_embargos', 'sem',
+                          nome=nome, cpf_cnpj=cpf_cnpj, municipio=municipio,
+                          num_doc=num_embargo, num_processo=num_processo,
+                          num_auto=num_auto, fonte=fonte,
+                          limit=limit)
 
-    if nome:
-        norm = strip_accents(nome).upper()
-        match_expr = _fts_match_expr(norm)
-        if match_expr:
-            joins.append('JOIN fts_sema_te_nome fn ON t.rowid = fn.rowid')
-            conditions.append('fn.fts_sema_te_nome MATCH ?')
-            params.append(match_expr)
 
-    if cpf_cnpj:
-        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
-        if len(clean) >= 11:
-            conditions.append('t.CPF_CNPJ_NORM = ?')
-        else:
-            conditions.append('t.CPF_CNPJ_NORM LIKE ?')
-            clean = f'%{clean}%'
-        params.append(clean)
+def search_desembargos(nome=None, cpf_cnpj=None, municipio=None,
+                       num_doc=None, num_processo=None, num_auto=None,
+                       fonte=None, limit=50):
+    """Search SEMA-MT areas desembargadas."""
+    return _generic_search('sema_desembargos', 'sde',
+                          nome=nome, cpf_cnpj=cpf_cnpj, municipio=municipio,
+                          num_doc=num_doc, num_processo=num_processo,
+                          num_auto=num_auto, fonte=fonte,
+                          limit=limit)
 
-    if municipio:
-        norm = strip_accents(municipio).upper()
-        match_expr = _fts_match_expr(norm)
-        if match_expr:
-            joins.append('JOIN fts_sema_te_mun fm ON t.rowid = fm.rowid')
-            conditions.append('fm.fts_sema_te_mun MATCH ?')
-            params.append(match_expr)
 
-    if num_embargo:
-        conditions.append('t.NUMERO_TERMO_EMBARGO = ?')
-        params.append(num_embargo)
-    if num_processo:
-        clean = re.sub(r'[^0-9]', '', num_processo)
-        conditions.append('t.NUM_PROCESSO_NORM LIKE ?')
-        params.append(f'%{clean}%')
-    if num_auto:
-        conditions.append('t.NUMERO_AUTO_INFRACAO = ?')
-        params.append(num_auto)
-    if fonte:
-        conditions.append('t.FONTE = ?')
-        params.append(fonte.upper())
-
-    has_fts = bool(joins)
-    join_clause = "\n        ".join(joins) if joins else ""
-    where = " AND ".join(conditions) if conditions else "1=1"
-
-    if has_fts:
-        max_fetch = max(limit + 1, 5000)
-        sql = f"""
-            SELECT t.* FROM sema_areas_embargadas t
-            {join_clause}
-            WHERE {where}
-            LIMIT ?
-        """
-        params.append(max_fetch)
-        rows = conn.execute(sql, params).fetchall()
-        results = [dict(r) for r in rows]
-        results.sort(key=lambda r: r.get('DATA_EMBARGO', ''), reverse=True)
-        has_more = len(results) > limit
-        results = results[:limit]
-    else:
-        fetch_limit = limit + 1
-        sql = f"""
-            SELECT t.* FROM sema_areas_embargadas t
-            WHERE {where}
-            ORDER BY t.DATA_EMBARGO DESC
-            LIMIT ?
-        """
-        params.append(fetch_limit)
-        rows = conn.execute(sql, params).fetchall()
-        has_more = len(rows) > limit
-        results = [dict(r) for r in rows[:limit]]
-
-    for r in results:
-        r.pop('NOME_NORM', None)
-        r.pop('MUNICIPIO_NORM', None)
-        r.pop('CPF_CNPJ_NORM', None)
-        r.pop('NUM_PROCESSO_NORM', None)
-
-    conn.close()
-    showing = len(results)
-    total = f"{showing}+" if has_more else str(showing)
-    return {"total": total, "showing": showing, "results": results}
-
+# ============================================================
+# RESUMO (profile across all 4 tables)
+# ============================================================
 
 def resumo_autuado(nome=None, cpf_cnpj=None):
-    """Full profile: SEMA-MT autos + embargos + totals."""
+    """Full profile: all SEMA tables summary."""
     conn = get_conn()
 
-    # Build FTS joins for autos
-    ai_joins = []
-    ai_conditions = []
-    ai_params = []
+    tables_config = [
+        ('sema_autos_infracao', 'sai'),
+        ('sema_outros_termos', 'sot'),
+        ('sema_embargos', 'sem'),
+        ('sema_desembargos', 'sde'),
+    ]
 
-    if nome:
-        norm = strip_accents(nome).upper()
-        match_expr = _fts_match_expr(norm)
-        if match_expr:
-            ai_joins.append('JOIN fts_sema_ai_nome fn ON a.rowid = fn.rowid')
-            ai_conditions.append('fn.fts_sema_ai_nome MATCH ?')
-            ai_params.append(match_expr)
-    if cpf_cnpj:
-        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
-        if len(clean) >= 11:
-            ai_conditions.append('a.CPF_CNPJ_NORM = ?')
-        else:
-            ai_conditions.append('a.CPF_CNPJ_NORM LIKE ?')
-            clean = f'%{clean}%'
-        ai_params.append(clean)
+    all_results = {}
 
-    ai_join = " ".join(ai_joins)
-    ai_where = " AND ".join(ai_conditions) if ai_conditions else "1=1"
+    for table_name, prefix in tables_config:
+        joins = []
+        conditions = []
+        params = []
 
-    # Fetch all matching autos
-    ai_rows = conn.execute(f"""
-        SELECT a.DATA_AUTO, a.SITUACAO, a.MUNICIPIO, a.TIPO_AUTO,
-               a.VALOR_TOTAL_MULTA, a.NUMERO_AUTO_INFRACAO,
-               a.DESCRICAO_OCORRENCIA, a.FONTE, a.ATIVIDADE
-        FROM sema_autos_infracao a {ai_join} WHERE {ai_where}
-    """, ai_params).fetchall()
+        if nome:
+            norm = strip_accents(nome).upper()
+            match_expr = _fts_match_expr(norm)
+            if match_expr:
+                fts_table = f'fts_{prefix}_nome'
+                joins.append(f'JOIN {fts_table} fn ON a.rowid = fn.rowid')
+                conditions.append(f'fn.{fts_table} MATCH ?')
+                params.append(match_expr)
+        if cpf_cnpj:
+            clean = re.sub(r'[^0-9]', '', cpf_cnpj)
+            if len(clean) >= 11:
+                conditions.append('a.CPF_CNPJ_NORM = ?')
+            else:
+                conditions.append('a.CPF_CNPJ_NORM LIKE ?')
+                clean = f'%{clean}%'
+            params.append(clean)
 
-    total_autos = len(ai_rows)
-    municipios = set()
-    datas = []
-    total_valor = 0.0
-    active_autos = []
+        join_clause = " ".join(joins)
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-    for r in ai_rows:
-        dat, sit, mun, tipo, valor, num, desc, fonte, ativ = r
-        if mun:
-            municipios.add(mun)
-        if dat:
-            datas.append(dat)
-        try:
-            v = float(valor) if valor else 0.0
-        except (ValueError, TypeError):
-            v = 0.0
-        total_valor += v
-        active_autos.append({
-            'DATA_AUTO': dat, 'SITUACAO': sit, 'MUNICIPIO': mun,
-            'TIPO_AUTO': tipo, 'VALOR_TOTAL_MULTA': valor,
-            'NUMERO_AUTO_INFRACAO': num, 'DESCRICAO_OCORRENCIA': desc,
-            'FONTE': fonte, 'ATIVIDADE': ativ,
-        })
+        rows = conn.execute(f"""
+            SELECT a.DATA_DOCUMENTO, a.SITUACAO, a.MUNICIPIO, a.TIPO_DOCUMENTO,
+                   a.VALOR_TOTAL_MULTA, a.NUMERO_DOCUMENTO, a.NUMERO_AUTO_INFRACAO,
+                   a.DESCRICAO_OCORRENCIA, a.FONTE, a.ATIVIDADE,
+                   a.PROPRIEDADE, a.AREA_HA, a.DESCRICAO_DANO,
+                   a.NUMERO_TERMO_EMBARGO, a.NUMERO_PROCESSO
+            FROM {table_name} a {join_clause} WHERE {where_clause}
+        """, params).fetchall()
 
-    ai_summary = {
-        'total_autos': total_autos,
-        'municipios': ','.join(sorted(municipios)) if municipios else None,
-        'primeiro_auto': min(datas) if datas else None,
-        'ultimo_auto': max(datas) if datas else None,
-        'valor_total': fmt_valor(total_valor),
-        'valor_total_float': total_valor,
-    }
+        total = len(rows)
+        municipios = set()
+        datas = []
+        total_valor = 0.0
+        items = []
 
-    active_autos.sort(key=lambda r: r.get('DATA_AUTO', ''), reverse=True)
-    recent_ai = active_autos[:10]
+        for r in rows:
+            dat, sit, mun, tipo, valor, num_doc, num_ai = r[0], r[1], r[2], r[3], r[4], r[5], r[6]
+            desc, fonte, ativ = r[7], r[8], r[9]
+            prop, area, dano, num_te, proc = r[10], r[11], r[12], r[13], r[14]
 
-    # Build FTS joins for embargos
-    te_joins = []
-    te_conditions = []
-    te_params = []
+            if mun:
+                municipios.add(mun)
+            if dat:
+                datas.append(dat)
+            try:
+                v = float(valor) if valor else 0.0
+            except (ValueError, TypeError):
+                v = 0.0
+            total_valor += v
 
-    if nome:
-        norm = strip_accents(nome).upper()
-        match_expr = _fts_match_expr(norm)
-        if match_expr:
-            te_joins.append('JOIN fts_sema_te_nome fn ON t.rowid = fn.rowid')
-            te_conditions.append('fn.fts_sema_te_nome MATCH ?')
-            te_params.append(match_expr)
-    if cpf_cnpj:
-        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
-        if len(clean) >= 11:
-            te_conditions.append('t.CPF_CNPJ_NORM = ?')
-        else:
-            te_conditions.append('t.CPF_CNPJ_NORM LIKE ?')
-            clean = f'%{clean}%'
-        te_params.append(clean)
+            items.append({
+                'DATA_DOCUMENTO': dat, 'SITUACAO': sit, 'MUNICIPIO': mun,
+                'TIPO_DOCUMENTO': tipo, 'VALOR_TOTAL_MULTA': valor,
+                'NUMERO_DOCUMENTO': num_doc, 'NUMERO_AUTO_INFRACAO': num_ai,
+                'DESCRICAO_OCORRENCIA': desc, 'FONTE': fonte, 'ATIVIDADE': ativ,
+                'PROPRIEDADE': prop, 'AREA_HA': area, 'DESCRICAO_DANO': dano,
+                'NUMERO_TERMO_EMBARGO': num_te, 'NUMERO_PROCESSO': proc,
+            })
 
-    te_join = " ".join(te_joins)
-    te_where = " AND ".join(te_conditions) if te_conditions else "1=1"
+        items.sort(key=lambda r: r.get('DATA_DOCUMENTO', ''), reverse=True)
 
-    te_rows = conn.execute(f"""
-        SELECT t.NUMERO_TERMO_EMBARGO, t.DATA_EMBARGO, t.MUNICIPIO,
-               t.PROPRIEDADE, t.AREA_HA, t.DESCRICAO_DANO,
-               t.SITUACAO, t.FONTE, t.VALOR_TOTAL_MULTA
-        FROM sema_areas_embargadas t {te_join} WHERE {te_where}
-    """, te_params).fetchall()
-
-    total_embargos = len(te_rows)
-    active_embargos = []
-
-    for r in te_rows:
-        num_te, dat, mun, prop, area, dano, sit, fonte, valor = r
-        active_embargos.append({
-            'NUMERO_TERMO_EMBARGO': num_te, 'DATA_EMBARGO': dat,
-            'MUNICIPIO': mun, 'PROPRIEDADE': prop,
-            'AREA_HA': area, 'DESCRICAO_DANO': dano,
-            'SITUACAO': sit, 'FONTE': fonte, 'VALOR_TOTAL_MULTA': valor,
-        })
-
-    te_summary = {
-        'total_embargos': total_embargos,
-    }
-
-    active_embargos.sort(key=lambda r: r.get('DATA_EMBARGO', ''), reverse=True)
+        all_results[table_name] = {
+            'total': total,
+            'municipios': ','.join(sorted(municipios)) if municipios else None,
+            'primeiro': min(datas) if datas else None,
+            'ultimo': max(datas) if datas else None,
+            'valor_total': fmt_valor(total_valor),
+            'valor_total_float': total_valor,
+            'recentes': items[:10],
+        }
 
     conn.close()
 
     return {
-        "autos_infracao": ai_summary,
-        "areas_embargadas": te_summary,
-        "ultimos_autos": recent_ai,
-        "embargos_recentes": active_embargos[:10],
+        "autos_infracao": all_results.get('sema_autos_infracao', {}),
+        "outros_termos": all_results.get('sema_outros_termos', {}),
+        "embargos": all_results.get('sema_embargos', {}),
+        "desembargos": all_results.get('sema_desembargos', {}),
     }
 
+
+# ============================================================
+# STATS
+# ============================================================
 
 def stats():
     """Database statistics."""
     conn = get_conn()
     result = {}
 
-    for table in ['sema_autos_infracao', 'sema_areas_embargadas']:
-        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        result[table] = count
+    tables = ['sema_autos_infracao', 'sema_outros_termos', 'sema_embargos', 'sema_desembargos']
+    for table in tables:
+        try:
+            count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            result[table] = count
+        except Exception:
+            result[table] = 0
 
     # By fonte
-    for fonte in ['SIGA', 'LEGADO']:
-        ai = conn.execute(
-            "SELECT COUNT(*) FROM sema_autos_infracao WHERE FONTE = ?", [fonte]
-        ).fetchone()[0]
-        te = conn.execute(
-            "SELECT COUNT(*) FROM sema_areas_embargadas WHERE FONTE = ?", [fonte]
-        ).fetchone()[0]
-        result[f'autos_{fonte.lower()}'] = ai
-        result[f'embargos_{fonte.lower()}'] = te
+    for fonte in ['SIGA', 'LEGADO', 'SIGA_TERMOS', 'DESCENTRALIZADO']:
+        try:
+            ai = conn.execute(
+                "SELECT COUNT(*) FROM sema_autos_infracao WHERE FONTE = ?", [fonte]
+            ).fetchone()[0]
+            result[f'autos_{fonte.lower()}'] = ai
+        except Exception:
+            pass
 
-    # Top municipios
-    top_mun = conn.execute("""
-        SELECT MUNICIPIO, COUNT(*) as n FROM sema_autos_infracao
-        WHERE MUNICIPIO != ''
-        GROUP BY MUNICIPIO ORDER BY n DESC LIMIT 10
-    """).fetchall()
-    result['top_municipios'] = [(r[0], r[1]) for r in top_mun]
+    # Top municipios (across autos + embargos)
+    try:
+        top_mun = conn.execute("""
+            SELECT MUNICIPIO, COUNT(*) as n FROM (
+                SELECT MUNICIPIO FROM sema_autos_infracao WHERE MUNICIPIO != ''
+                UNION ALL
+                SELECT MUNICIPIO FROM sema_embargos WHERE MUNICIPIO != ''
+            )
+            GROUP BY MUNICIPIO ORDER BY n DESC LIMIT 10
+        """).fetchall()
+        result['top_municipios'] = [(r[0], r[1]) for r in top_mun]
+    except Exception:
+        result['top_municipios'] = []
 
     # Year range
-    year_range = conn.execute("""
-        SELECT MIN(DATA_AUTO), MAX(DATA_AUTO)
-        FROM sema_autos_infracao WHERE DATA_AUTO != ''
-    """).fetchone()
-    result['period'] = (year_range[0], year_range[1])
+    try:
+        year_range = conn.execute("""
+            SELECT MIN(DATA_DOCUMENTO), MAX(DATA_DOCUMENTO)
+            FROM sema_autos_infracao WHERE DATA_DOCUMENTO != ''
+        """).fetchone()
+        result['period'] = (year_range[0], year_range[1])
+    except Exception:
+        result['period'] = (None, None)
 
-    db_size = os.path.getsize(DB_PATH)
-    result['db_size_mb'] = round(db_size / 1024 / 1024, 1)
+    try:
+        db_size = os.path.getsize(DB_PATH)
+        result['db_size_mb'] = round(db_size / 1024 / 1024, 1)
+    except Exception:
+        result['db_size_mb'] = 0
 
     conn.close()
     return result
 
 
+# ============================================================
+# CLI
+# ============================================================
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python3 consulta_sema.py <command> [args]")
-        print("Commands: stats, search_ai, search_te, resumo")
+        print("Commands: stats, search_ai, search_te, search_ot, search_de, resumo")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -434,6 +401,36 @@ if __name__ == "__main__":
                 kwargs[key] = val
             i += 2
         result = search_embargos(**kwargs)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif cmd == "search_ot":
+        kwargs = {}
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            key = args[i].lstrip('-')
+            val = args[i+1] if i+1 < len(args) else None
+            if key == 'limit':
+                kwargs[key] = int(val)
+            else:
+                kwargs[key] = val
+            i += 2
+        result = search_termos(**kwargs)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif cmd == "search_de":
+        kwargs = {}
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            key = args[i].lstrip('-')
+            val = args[i+1] if i+1 < len(args) else None
+            if key == 'limit':
+                kwargs[key] = int(val)
+            else:
+                kwargs[key] = val
+            i += 2
+        result = search_desembargos(**kwargs)
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
     elif cmd == "resumo":

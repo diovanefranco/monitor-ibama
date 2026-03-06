@@ -171,6 +171,45 @@ def api_sema_embargos():
         return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
 
 
+@app.route("/api/sema/termos")
+@login_required
+def api_sema_termos():
+    try:
+        params = {
+            "nome": request.args.get("nome") or None,
+            "cpf_cnpj": request.args.get("cpf_cnpj") or None,
+            "municipio": request.args.get("municipio") or None,
+            "num_doc": request.args.get("num_doc") or None,
+            "num_processo": request.args.get("num_processo") or None,
+            "fonte": request.args.get("fonte") or None,
+            "ano_inicio": request.args.get("ano_inicio") or None,
+            "ano_fim": request.args.get("ano_fim") or None,
+            "limit": int(request.args.get("limit", 50)),
+        }
+        return jsonify(consulta_sema.search_termos(**params))
+    except Exception as e:
+        return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
+
+
+@app.route("/api/sema/desembargos")
+@login_required
+def api_sema_desembargos():
+    try:
+        params = {
+            "nome": request.args.get("nome") or None,
+            "cpf_cnpj": request.args.get("cpf_cnpj") or None,
+            "municipio": request.args.get("municipio") or None,
+            "num_doc": request.args.get("num_doc") or None,
+            "num_processo": request.args.get("num_processo") or None,
+            "num_auto": request.args.get("num_auto") or None,
+            "fonte": request.args.get("fonte") or None,
+            "limit": int(request.args.get("limit", 50)),
+        }
+        return jsonify(consulta_sema.search_desembargos(**params))
+    except Exception as e:
+        return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
+
+
 @app.route("/api/sema/resumo")
 @login_required
 def api_sema_resumo():
@@ -238,7 +277,9 @@ def warmup_db():
     try:
         conn = consulta_sema.get_conn()
         n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
-        conn.execute("SELECT COUNT(*) FROM sema_areas_embargadas").fetchone()
+        conn.execute("SELECT COUNT(*) FROM sema_embargos").fetchone()
+        conn.execute("SELECT COUNT(*) FROM sema_outros_termos").fetchone()
+        conn.execute("SELECT COUNT(*) FROM sema_desembargos").fetchone()
         conn.close()
         if n > 0:
             sema_ok = True

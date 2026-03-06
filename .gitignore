@@ -10,3 +10,4 @@ venv/
 .env
 # SEMA-MT GeoJSON data files (downloaded from WFS)
 sema_*.json
+sema_data/

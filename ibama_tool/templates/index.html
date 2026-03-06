@@ -38,6 +38,8 @@
         .sub-tabs { margin-top: .5rem; }
         .badge-siga { background: #1565c0; font-size: .7rem; }
         .badge-legado { background: #ef6c00; font-size: .7rem; }
+        .badge-desc { background: #6a1b9a; font-size: .7rem; }
+        .badge-termos { background: #00838f; font-size: .7rem; }
     </style>
 </head>
 <body>
@@ -200,8 +202,10 @@
 <div class="tab-pane fade" id="panel-sema">
     <ul class="nav nav-tabs sub-tabs mb-3" role="tablist">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#sm-autos">Autos de Infracao</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-embargos">Areas Embargadas</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-resumo">Resumo Autuado</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-termos">Outros Termos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-embargos">Embargos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-desembargos">Desembargos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#sm-resumo">Resumo</a></li>
     </ul>
     <div class="tab-content">
         <!-- SM AUTOS -->
@@ -223,7 +227,8 @@
                     <div class="row g-2 mt-1">
                         <div class="col-md-2"><label class="form-label">Fonte</label>
                             <select class="form-select" id="sm-ai-fonte"><option value="">Todas</option>
-                                <option value="SIGA">SIGA (novo)</option><option value="LEGADO">Legado</option></select></div>
+                                <option value="SIGA">SIGA</option><option value="LEGADO">Legado</option>
+                                <option value="DESCENTRALIZADO">Descentralizado</option></select></div>
                         <div class="col-md-1"><label class="form-label">De</label>
                             <input type="number" class="form-control" id="sm-ai-ano-ini" min="2000" max="2026"></div>
                         <div class="col-md-1"><label class="form-label">Ate</label>
@@ -240,6 +245,44 @@
             </div></div>
             <div class="result-count mb-2" id="count-sm-autos"></div>
             <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-sm-autos"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- SM OUTROS TERMOS -->
+        <div class="tab-pane fade" id="sm-termos">
+            <div class="card mb-3"><div class="card-body">
+                <form id="form-sm-termos" onsubmit="smSearchTermos(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label">Nome / Razao Social</label>
+                            <input type="text" class="form-control" id="sm-ot-nome" placeholder="Nome ou parte"></div>
+                        <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="sm-ot-cpf" placeholder="Apenas numeros"></div>
+                        <div class="col-md-2"><label class="form-label">Municipio</label>
+                            <input type="text" class="form-control" id="sm-ot-municipio" placeholder="Municipio"></div>
+                        <div class="col-md-2"><label class="form-label">N. Documento</label>
+                            <input type="text" class="form-control" id="sm-ot-num-doc" placeholder="Numero"></div>
+                        <div class="col-md-2"><label class="form-label">N. Processo</label>
+                            <input type="text" class="form-control" id="sm-ot-processo" placeholder="Processo"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-2"><label class="form-label">Fonte</label>
+                            <select class="form-select" id="sm-ot-fonte"><option value="">Todas</option>
+                                <option value="SIGA_TERMOS">SIGA Termos</option>
+                                <option value="DESCENTRALIZADO">Descentralizado</option></select></div>
+                        <div class="col-md-1"><label class="form-label">De</label>
+                            <input type="number" class="form-control" id="sm-ot-ano-ini" min="2000" max="2026"></div>
+                        <div class="col-md-1"><label class="form-label">Ate</label>
+                            <input type="number" class="form-control" id="sm-ot-ano-fim" min="2000" max="2026"></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="sm-ot-limit"><option value="50" selected>50</option>
+                                <option value="100">100</option><option value="200">200</option><option value="500">500</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-sm-termos"></span> Pesquisar</button></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('form-sm-termos').reset()">Limpar</button></div>
+                    </div>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-sm-termos"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-sm-termos"><thead></thead><tbody></tbody></table></div></div>
         </div>
         <!-- SM EMBARGOS -->
         <div class="tab-pane fade" id="sm-embargos">
@@ -262,7 +305,8 @@
                             <input type="text" class="form-control" id="sm-te-num-auto" placeholder="Auto"></div>
                         <div class="col-md-2"><label class="form-label">Fonte</label>
                             <select class="form-select" id="sm-te-fonte"><option value="">Todas</option>
-                                <option value="SIGA">SIGA (novo)</option><option value="LEGADO">Legado</option></select></div>
+                                <option value="SIGA">SIGA</option><option value="LEGADO">Legado</option>
+                                <option value="DESCENTRALIZADO">Descentralizado</option></select></div>
                         <div class="col-md-1"><label class="form-label">Limite</label>
                             <select class="form-select" id="sm-te-limit"><option value="50" selected>50</option>
                                 <option value="100">100</option><option value="200">200</option></select></div>
@@ -275,6 +319,41 @@
             </div></div>
             <div class="result-count mb-2" id="count-sm-embargos"></div>
             <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-sm-embargos"><thead></thead><tbody></tbody></table></div></div>
+        </div>
+        <!-- SM DESEMBARGOS -->
+        <div class="tab-pane fade" id="sm-desembargos">
+            <div class="card mb-3"><div class="card-body">
+                <form id="form-sm-desembargos" onsubmit="smSearchDesembargos(); return false;">
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="form-label">Nome / Razao Social</label>
+                            <input type="text" class="form-control" id="sm-de-nome" placeholder="Nome ou parte"></div>
+                        <div class="col-md-2"><label class="form-label">CPF/CNPJ</label>
+                            <input type="text" class="form-control" id="sm-de-cpf" placeholder="Apenas numeros"></div>
+                        <div class="col-md-2"><label class="form-label">Municipio</label>
+                            <input type="text" class="form-control" id="sm-de-municipio" placeholder="Municipio"></div>
+                        <div class="col-md-2"><label class="form-label">N. Documento</label>
+                            <input type="text" class="form-control" id="sm-de-num-doc" placeholder="Numero"></div>
+                        <div class="col-md-2"><label class="form-label">N. Processo</label>
+                            <input type="text" class="form-control" id="sm-de-processo" placeholder="Processo"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-2"><label class="form-label">N. Auto Vinculado</label>
+                            <input type="text" class="form-control" id="sm-de-num-auto" placeholder="Auto"></div>
+                        <div class="col-md-2"><label class="form-label">Fonte</label>
+                            <select class="form-select" id="sm-de-fonte"><option value="">Todas</option>
+                                <option value="SIGA">SIGA</option><option value="LEGADO">Legado</option></select></div>
+                        <div class="col-md-1"><label class="form-label">Limite</label>
+                            <select class="form-select" id="sm-de-limit"><option value="50" selected>50</option>
+                                <option value="100">100</option><option value="200">200</option></select></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"><span class="spinner spinner-border spinner-border-sm" id="spin-sm-desembargos"></span> Pesquisar</button></div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" onclick="document.getElementById('form-sm-desembargos').reset()">Limpar</button></div>
+                    </div>
+                </form>
+            </div></div>
+            <div class="result-count mb-2" id="count-sm-desembargos"></div>
+            <div class="results-wrapper"><div class="table-responsive"><table class="table table-hover table-sm" id="table-sm-desembargos"><thead></thead><tbody></tbody></table></div></div>
         </div>
         <!-- SM RESUMO -->
         <div class="tab-pane fade" id="sm-resumo">
@@ -310,7 +389,11 @@
         fetch('/api/stats').then(r => r.json()).then(d => {
             const ibStats = `IBAMA: ${(d.autos_infracao||0).toLocaleString('pt-BR')} autos, ${(d.termos_embargo||0).toLocaleString('pt-BR')} embargos`;
             fetch('/api/sema/stats').then(r => r.json()).then(s => {
-                const smStats = `SEMA-MT: ${(s.sema_autos_infracao||0).toLocaleString('pt-BR')} autos, ${(s.sema_areas_embargadas||0).toLocaleString('pt-BR')} embargos`;
+                const smAutos = (s.sema_autos_infracao||0).toLocaleString('pt-BR');
+                const smTermos = (s.sema_outros_termos||0).toLocaleString('pt-BR');
+                const smEmb = (s.sema_embargos||0).toLocaleString('pt-BR');
+                const smDes = (s.sema_desembargos||0).toLocaleString('pt-BR');
+                const smStats = `SEMA-MT: ${smAutos} autos, ${smTermos} termos, ${smEmb} emb., ${smDes} des.`;
                 document.getElementById('db-stats').textContent = ibStats + '  |  ' + smStats;
             }).catch(() => { document.getElementById('db-stats').textContent = ibStats; });
         });
@@ -329,6 +412,13 @@
         if (!v || v === '') return '-';
         try { const n = parseFloat(v); if (isNaN(n) || n === 0) return '-';
             return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2}); } catch { return v; }
+    }
+    function fonteBadge(fonte) {
+        if (fonte === 'SIGA') return '<span class="badge badge-siga">SIGA</span>';
+        if (fonte === 'LEGADO') return '<span class="badge badge-legado">LEGADO</span>';
+        if (fonte === 'DESCENTRALIZADO') return '<span class="badge badge-desc">DESC</span>';
+        if (fonte === 'SIGA_TERMOS') return '<span class="badge badge-termos">TERMOS</span>';
+        return '<span class="badge bg-secondary">' + esc(fonte||'') + '</span>';
     }
 
     // ---- DETAIL TOGGLE (generic) ----
@@ -497,19 +587,44 @@
             if (d.error) { alert(d.error); return; }
             document.getElementById('count-sm-autos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
             const t = document.getElementById('table-sm-autos');
-            t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Auto</th><th>Processo</th><th>Nome/Razao Social</th><th>CPF/CNPJ</th><th>Municipio</th><th>Valor Multa</th><th>Situacao</th></tr>';
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Documento</th><th>Processo</th><th>Nome/Razao Social</th><th>CPF/CNPJ</th><th>Municipio</th><th>Valor Multa</th><th>Situacao</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
             d.results.forEach(r => {
                 const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
-                const fonteBadge = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEGADO</span>';
                 tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
-                    <td>${fonteBadge}</td>
-                    <td>${fmtData(r.DATA_AUTO)}</td><td><strong>${esc(r.NUMERO_AUTO_INFRACAO)}</strong></td>
+                    <td>${fonteBadge(r.FONTE)}</td>
+                    <td>${fmtData(r.DATA_DOCUMENTO)}</td><td><strong>${esc(r.NUMERO_DOCUMENTO)}</strong></td>
                     <td>${esc(r.NUMERO_PROCESSO)}</td><td>${esc(r.NOME_RAZAO_SOCIAL)}</td><td>${esc(r.CPF_CNPJ)}</td>
                     <td>${esc(r.MUNICIPIO)}</td><td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td><td>${esc(r.SITUACAO||'')}</td>`;
                 tb.appendChild(tr);
             });
         }).catch(e => { spin('spin-sm-autos',false); alert('Erro: '+e); });
+    }
+
+    function smSearchTermos() {
+        spin('spin-sm-termos', true);
+        const p = new URLSearchParams();
+        const map = {nome:'sm-ot-nome',cpf_cnpj:'sm-ot-cpf',municipio:'sm-ot-municipio',
+            num_doc:'sm-ot-num-doc',num_processo:'sm-ot-processo',fonte:'sm-ot-fonte',
+            ano_inicio:'sm-ot-ano-ini',ano_fim:'sm-ot-ano-fim',limit:'sm-ot-limit'};
+        for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
+        fetch('/api/sema/termos?'+p).then(r=>r.json()).then(d => {
+            spin('spin-sm-termos',false);
+            if (d.error) { alert(d.error); return; }
+            document.getElementById('count-sm-termos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-sm-termos');
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Processo</th><th>Nome/Razao Social</th><th>CPF/CNPJ</th><th>Municipio</th><th>Atividade</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
+                tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                    <td>${fonteBadge(r.FONTE)}</td>
+                    <td>${fmtData(r.DATA_DOCUMENTO)}</td><td>${esc(r.TIPO_DOCUMENTO)}</td><td><strong>${esc(r.NUMERO_DOCUMENTO)}</strong></td>
+                    <td>${esc(r.NUMERO_PROCESSO)}</td><td>${esc(r.NOME_RAZAO_SOCIAL)}</td><td>${esc(r.CPF_CNPJ)}</td>
+                    <td>${esc(r.MUNICIPIO)}</td><td>${esc(r.ATIVIDADE||'')}</td>`;
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-sm-termos',false); alert('Erro: '+e); });
     }
 
     function smSearchEmbargos() {
@@ -528,16 +643,42 @@
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
             d.results.forEach(r => {
                 const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
-                const fonteBadge = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEGADO</span>';
                 tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
-                    <td>${fonteBadge}</td>
-                    <td>${fmtData(r.DATA_EMBARGO)}</td><td><strong>${esc(r.NUMERO_TERMO_EMBARGO)}</strong></td>
+                    <td>${fonteBadge(r.FONTE)}</td>
+                    <td>${fmtData(r.DATA_DOCUMENTO)}</td><td><strong>${esc(r.NUMERO_DOCUMENTO)}</strong></td>
                     <td>${esc(r.NUMERO_AUTO_INFRACAO)}</td><td>${esc(r.NUMERO_PROCESSO)}</td>
                     <td>${esc(r.NOME_RAZAO_SOCIAL)}</td><td>${esc(r.CPF_CNPJ)}</td>
                     <td>${esc(r.MUNICIPIO)}</td><td>${esc(r.PROPRIEDADE)}</td><td>${esc(r.AREA_HA)}</td>`;
                 tb.appendChild(tr);
             });
         }).catch(e => { spin('spin-sm-embargos',false); alert('Erro: '+e); });
+    }
+
+    function smSearchDesembargos() {
+        spin('spin-sm-desembargos', true);
+        const p = new URLSearchParams();
+        const map = {nome:'sm-de-nome',cpf_cnpj:'sm-de-cpf',municipio:'sm-de-municipio',
+            num_doc:'sm-de-num-doc',num_processo:'sm-de-processo',num_auto:'sm-de-num-auto',
+            fonte:'sm-de-fonte',limit:'sm-de-limit'};
+        for (const [k,id] of Object.entries(map)) { const v = document.getElementById(id).value.trim(); if (v) p.set(k,v); }
+        fetch('/api/sema/desembargos?'+p).then(r=>r.json()).then(d => {
+            spin('spin-sm-desembargos',false);
+            if (d.error) { alert(d.error); return; }
+            document.getElementById('count-sm-desembargos').textContent = `${d.total} resultados (exibindo ${d.showing})`;
+            const t = document.getElementById('table-sm-desembargos');
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Fonte</th><th>Data</th><th>Documento</th><th>Auto</th><th>Processo</th><th>Nome</th><th>CPF/CNPJ</th><th>Municipio</th><th>Propriedade</th><th>Area (ha)</th></tr>';
+            const tb = t.querySelector('tbody'); tb.innerHTML = '';
+            d.results.forEach(r => {
+                const tr = document.createElement('tr'); tr.style.cursor='pointer'; tr.dataset.record = JSON.stringify(r);
+                tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
+                    <td>${fonteBadge(r.FONTE)}</td>
+                    <td>${fmtData(r.DATA_DOCUMENTO)}</td><td><strong>${esc(r.NUMERO_DOCUMENTO)}</strong></td>
+                    <td>${esc(r.NUMERO_AUTO_INFRACAO)}</td><td>${esc(r.NUMERO_PROCESSO)}</td>
+                    <td>${esc(r.NOME_RAZAO_SOCIAL)}</td><td>${esc(r.CPF_CNPJ)}</td>
+                    <td>${esc(r.MUNICIPIO)}</td><td>${esc(r.PROPRIEDADE)}</td><td>${esc(r.AREA_HA)}</td>`;
+                tb.appendChild(tr);
+            });
+        }).catch(e => { spin('spin-sm-desembargos',false); alert('Erro: '+e); });
     }
 
     function smSearchResumo() {
@@ -555,29 +696,34 @@
     }
 
     function renderSmResumo(d) {
-        const ai = d.autos_infracao, te = d.areas_embargadas;
+        const ai = d.autos_infracao||{}, ot = d.outros_termos||{}, em = d.embargos||{}, de = d.desembargos||{};
         let h = '<div class="row g-3 mb-4">';
-        h += `<div class="col-md-3"><div class="card stats-card"><h2>${ai.total_autos||0}</h2><div class="text-muted">Autos de Infracao</div></div></div>`;
-        h += `<div class="col-md-3"><div class="card stats-card"><h2>${te.total_embargos||0}</h2><div class="text-muted">Areas Embargadas</div></div></div>`;
-        h += `<div class="col-md-3"><div class="card stats-card"><h2>${esc(ai.valor_total||'N/A')}</h2><div class="text-muted">Valor Total Multas</div></div></div>`;
-        h += `<div class="col-md-3"><div class="card stats-card"><h2>${fmtData(ai.primeiro_auto)} - ${fmtData(ai.ultimo_auto)}</h2><div class="text-muted">Periodo</div><small>${esc(ai.municipios||'')}</small></div></div>`;
+        h += `<div class="col-md-2"><div class="card stats-card"><h2>${ai.total||0}</h2><div class="text-muted">Autos Infracao</div></div></div>`;
+        h += `<div class="col-md-2"><div class="card stats-card"><h2>${ot.total||0}</h2><div class="text-muted">Outros Termos</div></div></div>`;
+        h += `<div class="col-md-2"><div class="card stats-card"><h2>${em.total||0}</h2><div class="text-muted">Embargos</div></div></div>`;
+        h += `<div class="col-md-2"><div class="card stats-card"><h2>${de.total||0}</h2><div class="text-muted">Desembargos</div></div></div>`;
+        h += `<div class="col-md-2"><div class="card stats-card"><h2>${esc(ai.valor_total||'N/A')}</h2><div class="text-muted">Valor Multas</div></div></div>`;
+        h += `<div class="col-md-2"><div class="card stats-card"><h2>${fmtData(ai.primeiro)} - ${fmtData(ai.ultimo)}</h2><div class="text-muted">Periodo</div><small>${esc(ai.municipios||'')}</small></div></div>`;
         h += '</div>';
-        if (d.ultimos_autos && d.ultimos_autos.length) {
-            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Ultimos Autos SEMA-MT</h5><table class="table table-sm"><thead><tr><th>Fonte</th><th>Data</th><th>Auto</th><th>Municipio</th><th>Atividade</th><th>Valor</th><th>Situacao</th></tr></thead><tbody>';
-            d.ultimos_autos.forEach(r => {
-                const fb = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEG</span>';
-                h += `<tr><td>${fb}</td><td>${fmtData(r.DATA_AUTO)}</td><td>${esc(r.NUMERO_AUTO_INFRACAO)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.ATIVIDADE)}</td><td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td><td>${esc(r.SITUACAO||'')}</td></tr>`;
+
+        // Recentes de cada tabela
+        function renderRecentes(titulo, recentes, showValor) {
+            if (!recentes || !recentes.length) return '';
+            let s = `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">${titulo}</h5><table class="table table-sm"><thead><tr><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Municipio</th>${showValor?'<th>Valor</th>':''}<th>Situacao</th></tr></thead><tbody>`;
+            recentes.forEach(r => {
+                s += `<tr><td>${fonteBadge(r.FONTE)}</td><td>${fmtData(r.DATA_DOCUMENTO)}</td><td>${esc(r.TIPO_DOCUMENTO)}</td><td>${esc(r.NUMERO_DOCUMENTO)}</td><td>${esc(r.MUNICIPIO)}</td>`;
+                if (showValor) s += `<td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td>`;
+                s += `<td>${esc(r.SITUACAO||'')}</td></tr>`;
             });
-            h += '</tbody></table></div></div>';
+            s += '</tbody></table></div></div>';
+            return s;
         }
-        if (d.embargos_recentes && d.embargos_recentes.length) {
-            h += '<div class="card mb-3"><div class="card-body"><h5 class="resumo-section">Embargos SEMA-MT</h5><table class="table table-sm"><thead><tr><th>Fonte</th><th>Data</th><th>Embargo</th><th>Municipio</th><th>Propriedade</th><th>Area</th><th>Situacao</th></tr></thead><tbody>';
-            d.embargos_recentes.forEach(r => {
-                const fb = r.FONTE==='SIGA' ? '<span class="badge badge-siga">SIGA</span>' : '<span class="badge badge-legado">LEG</span>';
-                h += `<tr><td>${fb}</td><td>${fmtData(r.DATA_EMBARGO)}</td><td>${esc(r.NUMERO_TERMO_EMBARGO)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.PROPRIEDADE)}</td><td>${esc(r.AREA_HA)}</td><td>${esc(r.SITUACAO||'')}</td></tr>`;
-            });
-            h += '</tbody></table></div></div>';
-        }
+
+        h += renderRecentes('Autos de Infracao', ai.recentes, true);
+        h += renderRecentes('Outros Termos (Inspecao, Notificacao, etc.)', ot.recentes, false);
+        h += renderRecentes('Embargos', em.recentes, false);
+        h += renderRecentes('Desembargos', de.recentes, false);
+
         document.getElementById('sm-resumo-content').innerHTML = h;
     }
     </script>

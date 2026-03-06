@@ -25,31 +25,43 @@ _SSL_CTX.check_hostname = False
 _SSL_CTX.verify_mode = ssl.CERT_NONE
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = _SCRIPT_DIR  # JSONs stored alongside scripts
+DATA_DIR = os.path.join(_SCRIPT_DIR, "sema_data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # GeoServer WFS base URL with public authkey
 WFS_BASE = "https://geo.sema.mt.gov.br/geoserver/Geoportal/ows"
 AUTH_KEY = "541085de-9a2e-454e-bdba-eb3d57a2f492"
 
-# Layers to download
-# sort_by: required for layers that lack primary keys (SQL views)
+# ALL fiscalização layers (21 layers total)
 LAYERS = {
-    "sema_ai_siga.json": {
-        "layer": "Geoportal:AUTOS_DE_INFRACAO_SIGA_PONTO",
-        "sort_by": None,  # Has natural order
-    },
-    "sema_ai_legado.json": {
-        "layer": "Geoportal:MVW_TIT_AUTUACAO",
-        "sort_by": "OBJECTID",  # SQL view needs explicit sort for pagination
-    },
-    "sema_embargo_siga.json": {
-        "layer": "Geoportal:AREA_EMBARGADA_SIGA_PONTO",
-        "sort_by": None,
-    },
-    "sema_embargo_legado.json": {
-        "layer": "Geoportal:AREAS_EMBARGADAS_SEMA",
-        "sort_by": None,
-    },
+    # ── AUTOS DE INFRAÇÃO ──
+    "ai_siga_ponto.json":      {"layer": "Geoportal:AUTOS_DE_INFRACAO_SIGA_PONTO", "sort_by": None},
+    "ai_siga_poligono.json":   {"layer": "Geoportal:AUTOS_DE_INFRACAO_SIGA_POLIGONO", "sort_by": None},
+    "ai_legado.json":          {"layer": "Geoportal:MVW_TIT_AUTUACAO", "sort_by": "OBJECTID"},
+    "ai_descentralizado.json": {"layer": "Geoportal:TDAD_FISCALIZACAO_AUTO_DE_INFRACAO", "sort_by": None},
+    # ── AUTO DE INSPEÇÃO ──
+    "inspecao_siga.json":             {"layer": "Geoportal:AUTOS_TERMOS_AUTO_INSPECAO", "sort_by": None},
+    "inspecao_descentralizado.json":  {"layer": "Geoportal:TDAD_FISCALIZACAO_AUTO_DE_INSPECAO", "sort_by": None},
+    # ── NOTIFICAÇÃO ──
+    "notificacao_siga.json":             {"layer": "Geoportal:AUTOS_TERMOS_NOTIFICACAO", "sort_by": None},
+    "notificacao_descentralizado.json":  {"layer": "Geoportal:TDAD_FISCALIZACAO_NOTIFICACAO", "sort_by": None},
+    # ── TERMOS ──
+    "termo_apreensao.json":   {"layer": "Geoportal:AUTOS_TERMOS_TERMO_APREENSAO", "sort_by": None},
+    "termo_deposito.json":    {"layer": "Geoportal:AUTOS_TERMOS_TERMO_DEPOSITO", "sort_by": None},
+    "termo_destruicao.json":  {"layer": "Geoportal:AUTOS_TERMOS_TERMO_DEST_INUT", "sort_by": None},
+    "termo_soltura.json":     {"layer": "Geoportal:AUTOS_TERMOS_TERMO_SOLTURA", "sort_by": None},
+    # ── EMBARGOS ──
+    "embargo_siga_ponto.json":      {"layer": "Geoportal:AREA_EMBARGADA_SIGA_PONTO", "sort_by": None},
+    "embargo_siga_poligono.json":   {"layer": "Geoportal:AREA_EMBARGADA_SIGA_POLIGONO", "sort_by": None},
+    "embargo_legado.json":          {"layer": "Geoportal:AREAS_EMBARGADAS_SEMA", "sort_by": None},
+    "embargo_descentralizado.json": {"layer": "Geoportal:TDAD_FISCALIZACAO_TERMO_DE_EMBARGO", "sort_by": None},
+    # ── DESEMBARGOS ──
+    "desembargo_siga_ponto.json":    {"layer": "Geoportal:AREAS_DESEMBARGADAS_SIGA_PONTO", "sort_by": None},
+    "desembargo_siga_poligono.json": {"layer": "Geoportal:AREAS_DESEMBARGADAS_SIGA_POLIGONO", "sort_by": None},
+    "desembargo_legado.json":        {"layer": "Geoportal:AREAS_DESEMBARGADAS_SEMA", "sort_by": None},
+    # ── FISCALIZAÇÃO GERAL ──
+    "fiscalizacao_descentralizado.json": {"layer": "Geoportal:TDAD_FISCALIZACAO", "sort_by": None},
+    "las_descentralizado.json":          {"layer": "Geoportal:TDAD_FISCALIZACAO_LAS", "sort_by": None},
 }
 
 PAGE_SIZE = 5000
