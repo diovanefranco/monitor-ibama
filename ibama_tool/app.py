@@ -2,23 +2,66 @@
 """
 IBAMA Monitor - Web interface for searching IBAMA enforcement data.
 """
-from flask import Flask, request, jsonify, render_template
+import os
+from functools import wraps
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for
+
 import consulta
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-me")
+
+# Login credentials (set via environment variables on Render)
+APP_USER = os.environ.get("APP_USER", "admin")
+APP_PASS = os.environ.get("APP_PASS", "ibama2026")
+
+
+def login_required(f):
+    """Decorator to require login on routes."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Nao autorizado"}), 401
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        user = request.form.get("username", "").strip()
+        pwd = request.form.get("password", "").strip()
+        if user == APP_USER and pwd == APP_PASS:
+            session["logged_in"] = True
+            session.permanent = True
+            return redirect(url_for("index"))
+        error = "Usuario ou senha incorretos"
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
 
 @app.route("/api/stats")
+@login_required
 def api_stats():
     return jsonify(consulta.stats())
 
 
 @app.route("/api/autos")
+@login_required
 def api_autos():
     params = {
         "nome": request.args.get("nome") or None,
@@ -36,6 +79,7 @@ def api_autos():
 
 
 @app.route("/api/embargos")
+@login_required
 def api_embargos():
     params = {
         "nome": request.args.get("nome") or None,
@@ -52,6 +96,7 @@ def api_embargos():
 
 
 @app.route("/api/texto")
+@login_required
 def api_texto():
     q = request.args.get("q", "").strip()
     if not q:
@@ -62,6 +107,7 @@ def api_texto():
 
 
 @app.route("/api/resumo")
+@login_required
 def api_resumo():
     nome = request.args.get("nome") or None
     cpf_cnpj = request.args.get("cpf_cnpj") or None
