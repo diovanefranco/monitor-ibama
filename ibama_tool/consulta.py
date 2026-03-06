@@ -54,77 +54,95 @@ def _fts_match_expr(terms):
 def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
                  num_auto=None, num_processo=None, tipo_infracao=None,
                  ano_inicio=None, ano_fim=None, limit=50):
-    """Search autos de infracao with multiple filters (uses FTS5 + indexes)."""
+    """Search autos de infracao with multiple filters (FTS5 JOIN for speed)."""
     conn = get_conn()
+    joins = []
     conditions = []
     params = []
-    use_fts_nome = False
-    use_fts_mun = False
 
-    # FTS5 for name search (sub-second vs 40s with LIKE)
+    # FTS5 JOIN for name search (15x faster than IN subquery on disk)
     if nome:
         norm = strip_accents(nome).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            conditions.append('rowid IN (SELECT rowid FROM fts_ai_nome WHERE fts_ai_nome MATCH ?)')
+            joins.append('JOIN fts_ai_nome fn ON a.rowid = fn.rowid')
+            conditions.append('fn.fts_ai_nome MATCH ?')
             params.append(match_expr)
-            use_fts_nome = True
 
     # CPF: exact match on digits (uses index directly)
     if cpf_cnpj:
         clean = re.sub(r'[^0-9]', '', cpf_cnpj)
         if len(clean) >= 11:
-            conditions.append('CPF_CNPJ_NORM = ?')
+            conditions.append('a.CPF_CNPJ_NORM = ?')
         else:
-            conditions.append('CPF_CNPJ_NORM LIKE ?')
+            conditions.append('a.CPF_CNPJ_NORM LIKE ?')
             clean = f'%{clean}%'
         params.append(clean)
 
     if uf:
-        conditions.append('UF = ?')
+        conditions.append('a.UF = ?')
         params.append(uf.upper())
 
-    # FTS5 for municipio search
+    # FTS5 JOIN for municipio search
     if municipio:
         norm = strip_accents(municipio).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            conditions.append('rowid IN (SELECT rowid FROM fts_ai_mun WHERE fts_ai_mun MATCH ?)')
+            joins.append('JOIN fts_ai_mun fm ON a.rowid = fm.rowid')
+            conditions.append('fm.fts_ai_mun MATCH ?')
             params.append(match_expr)
-            use_fts_mun = True
 
     if num_auto:
-        conditions.append('NUM_AUTO_INFRACAO = ?')
+        conditions.append('a.NUM_AUTO_INFRACAO = ?')
         params.append(num_auto)
     if num_processo:
         clean = re.sub(r'[^0-9]', '', num_processo)
-        conditions.append('NUM_PROCESSO_NORM LIKE ?')
+        conditions.append('a.NUM_PROCESSO_NORM LIKE ?')
         params.append(f'%{clean}%')
     if tipo_infracao:
-        conditions.append('TIPO_INFRACAO LIKE ?')
+        conditions.append('a.TIPO_INFRACAO LIKE ?')
         params.append(f'%{tipo_infracao.upper()}%')
     if ano_inicio:
-        conditions.append("DAT_HORA_AUTO_INFRACAO >= ?")
+        conditions.append("a.DAT_HORA_AUTO_INFRACAO >= ?")
         params.append(f"{ano_inicio}-01-01")
     if ano_fim:
-        conditions.append("DAT_HORA_AUTO_INFRACAO <= ?")
+        conditions.append("a.DAT_HORA_AUTO_INFRACAO <= ?")
         params.append(f"{ano_fim}-12-31")
 
+    has_fts = bool(joins)
+    join_clause = "\n        ".join(joins) if joins else ""
     where = " AND ".join(conditions) if conditions else "1=1"
 
-    # Single query: fetch limit+1 rows to know if there are more
-    fetch_limit = limit + 1
-    sql = f"""
-        SELECT * FROM autos_infracao
-        WHERE {where}
-        ORDER BY DAT_HORA_AUTO_INFRACAO DESC
-        LIMIT ?
-    """
-    params.append(fetch_limit)
-
-    rows = conn.execute(sql, params).fetchall()
-    has_more = len(rows) > limit
-    results = [dict(r) for r in rows[:limit]]
+    if has_fts:
+        # FTS active: skip ORDER BY in SQL (causes slow random disk reads)
+        # Fetch generous limit, sort in Python (instant for in-memory data)
+        max_fetch = max(limit + 1, 5000)
+        sql = f"""
+            SELECT a.* FROM autos_infracao a
+            {join_clause}
+            WHERE {where}
+            LIMIT ?
+        """
+        params.append(max_fetch)
+        rows = conn.execute(sql, params).fetchall()
+        results = [dict(r) for r in rows]
+        # Sort in Python (fast: <1ms for thousands of rows)
+        results.sort(key=lambda r: r.get('DAT_HORA_AUTO_INFRACAO', ''), reverse=True)
+        has_more = len(results) > limit
+        results = results[:limit]
+    else:
+        # No FTS: use SQL ORDER BY (fast with B-tree indexes)
+        fetch_limit = limit + 1
+        sql = f"""
+            SELECT a.* FROM autos_infracao a
+            WHERE {where}
+            ORDER BY a.DAT_HORA_AUTO_INFRACAO DESC
+            LIMIT ?
+        """
+        params.append(fetch_limit)
+        rows = conn.execute(sql, params).fetchall()
+        has_more = len(rows) > limit
+        results = [dict(r) for r in rows[:limit]]
 
     # Remove normalized columns from results (internal use only)
     for r in results:
@@ -142,69 +160,89 @@ def search_autos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
 def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
                     num_tad=None, num_processo=None, num_auto=None,
                     ativos_only=False, limit=50):
-    """Search termos de embargo with multiple filters (uses FTS5 + indexes)."""
+    """Search termos de embargo with multiple filters (FTS5 JOIN for speed)."""
     conn = get_conn()
+    joins = []
     conditions = []
     params = []
 
-    # FTS5 for name search
+    # FTS5 JOIN for name search
     if nome:
         norm = strip_accents(nome).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            conditions.append('rowid IN (SELECT rowid FROM fts_te_nome WHERE fts_te_nome MATCH ?)')
+            joins.append('JOIN fts_te_nome fn ON t.rowid = fn.rowid')
+            conditions.append('fn.fts_te_nome MATCH ?')
             params.append(match_expr)
 
     # CPF: exact match on digits
     if cpf_cnpj:
         clean = re.sub(r'[^0-9]', '', cpf_cnpj)
         if len(clean) >= 11:
-            conditions.append('CPF_CNPJ_NORM = ?')
+            conditions.append('t.CPF_CNPJ_NORM = ?')
         else:
-            conditions.append('CPF_CNPJ_NORM LIKE ?')
+            conditions.append('t.CPF_CNPJ_NORM LIKE ?')
             clean = f'%{clean}%'
         params.append(clean)
 
     if uf:
-        conditions.append('UF = ?')
+        conditions.append('t.UF = ?')
         params.append(uf.upper())
 
-    # FTS5 for municipio search
+    # FTS5 JOIN for municipio search
     if municipio:
         norm = strip_accents(municipio).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            conditions.append('rowid IN (SELECT rowid FROM fts_te_mun WHERE fts_te_mun MATCH ?)')
+            joins.append('JOIN fts_te_mun fm ON t.rowid = fm.rowid')
+            conditions.append('fm.fts_te_mun MATCH ?')
             params.append(match_expr)
 
     if num_tad:
-        conditions.append('NUM_TAD = ?')
+        conditions.append('t.NUM_TAD = ?')
         params.append(num_tad)
     if num_processo:
         clean = re.sub(r'[^0-9]', '', num_processo)
-        conditions.append('NUM_PROCESSO_NORM LIKE ?')
+        conditions.append('t.NUM_PROCESSO_NORM LIKE ?')
         params.append(f'%{clean}%')
     if num_auto:
-        conditions.append('NUM_AUTO_INFRACAO = ?')
+        conditions.append('t.NUM_AUTO_INFRACAO = ?')
         params.append(num_auto)
     if ativos_only:
-        conditions.append("(SIT_DESEMBARGO IS NULL OR SIT_DESEMBARGO = '')")
-        conditions.append("SIT_CANCELADO = 'N'")
+        conditions.append("(t.SIT_DESEMBARGO IS NULL OR t.SIT_DESEMBARGO = '')")
+        conditions.append("t.SIT_CANCELADO = 'N'")
 
+    has_fts = bool(joins)
+    join_clause = "\n        ".join(joins) if joins else ""
     where = " AND ".join(conditions) if conditions else "1=1"
 
-    fetch_limit = limit + 1
-    sql = f"""
-        SELECT * FROM termos_embargo
-        WHERE {where}
-        ORDER BY DAT_EMBARGO DESC
-        LIMIT ?
-    """
-    params.append(fetch_limit)
-
-    rows = conn.execute(sql, params).fetchall()
-    has_more = len(rows) > limit
-    results = [dict(r) for r in rows[:limit]]
+    if has_fts:
+        # FTS active: skip ORDER BY in SQL, sort in Python
+        max_fetch = max(limit + 1, 5000)
+        sql = f"""
+            SELECT t.* FROM termos_embargo t
+            {join_clause}
+            WHERE {where}
+            LIMIT ?
+        """
+        params.append(max_fetch)
+        rows = conn.execute(sql, params).fetchall()
+        results = [dict(r) for r in rows]
+        results.sort(key=lambda r: r.get('DAT_EMBARGO', ''), reverse=True)
+        has_more = len(results) > limit
+        results = results[:limit]
+    else:
+        fetch_limit = limit + 1
+        sql = f"""
+            SELECT t.* FROM termos_embargo t
+            WHERE {where}
+            ORDER BY t.DAT_EMBARGO DESC
+            LIMIT ?
+        """
+        params.append(fetch_limit)
+        rows = conn.execute(sql, params).fetchall()
+        has_more = len(rows) > limit
+        results = [dict(r) for r in rows[:limit]]
 
     for r in results:
         r.pop('NOME_EMBARGADO_NORM', None)
@@ -259,66 +297,75 @@ def search_texto(termo, tabela="autos", limit=50):
 
 
 def resumo_autuado(nome=None, cpf_cnpj=None):
-    """Full profile of an autuado: autos + embargos + totals."""
+    """Full profile of an autuado: autos + embargos + totals (FTS5 JOIN)."""
     conn = get_conn()
 
-    conditions_ai = []
-    conditions_te = []
-    params = []
+    # Build FTS joins and conditions for autos_infracao
+    ai_joins = []
+    ai_conditions = []
+    ai_params = []
 
     if nome:
         norm = strip_accents(nome).upper()
         match_expr = _fts_match_expr(norm)
         if match_expr:
-            conditions_ai.append('rowid IN (SELECT rowid FROM fts_ai_nome WHERE fts_ai_nome MATCH ?)')
-            conditions_te.append('rowid IN (SELECT rowid FROM fts_te_nome WHERE fts_te_nome MATCH ?)')
-            params.append(match_expr)
+            ai_joins.append('JOIN fts_ai_nome fn ON a.rowid = fn.rowid')
+            ai_conditions.append('fn.fts_ai_nome MATCH ?')
+            ai_params.append(match_expr)
     if cpf_cnpj:
         clean = re.sub(r'[^0-9]', '', cpf_cnpj)
         if len(clean) >= 11:
-            conditions_ai.append('CPF_CNPJ_NORM = ?')
-            conditions_te.append('CPF_CNPJ_NORM = ?')
+            ai_conditions.append('a.CPF_CNPJ_NORM = ?')
         else:
-            conditions_ai.append('CPF_CNPJ_NORM LIKE ?')
-            conditions_te.append('CPF_CNPJ_NORM LIKE ?')
+            ai_conditions.append('a.CPF_CNPJ_NORM LIKE ?')
             clean = f'%{clean}%'
-        params.append(clean)
+        ai_params.append(clean)
 
-    where_ai = " AND ".join(conditions_ai) if conditions_ai else "1=1"
-    where_te = " AND ".join(conditions_te) if conditions_te else "1=1"
+    ai_join = " ".join(ai_joins)
+    ai_where = " AND ".join(ai_conditions) if ai_conditions else "1=1"
+
+    # Build FTS joins and conditions for termos_embargo
+    te_joins = []
+    te_conditions = []
+    te_params = []
+
+    if nome:
+        norm = strip_accents(nome).upper()
+        match_expr = _fts_match_expr(norm)
+        if match_expr:
+            te_joins.append('JOIN fts_te_nome fn ON t.rowid = fn.rowid')
+            te_conditions.append('fn.fts_te_nome MATCH ?')
+            te_params.append(match_expr)
+    if cpf_cnpj:
+        clean = re.sub(r'[^0-9]', '', cpf_cnpj)
+        if len(clean) >= 11:
+            te_conditions.append('t.CPF_CNPJ_NORM = ?')
+        else:
+            te_conditions.append('t.CPF_CNPJ_NORM LIKE ?')
+            clean = f'%{clean}%'
+        te_params.append(clean)
+
+    te_join = " ".join(te_joins)
+    te_where = " AND ".join(te_conditions) if te_conditions else "1=1"
 
     # Autos summary
-    ai_sql = f"""
+    ai_summary = dict(conn.execute(f"""
         SELECT COUNT(*) as total_autos,
-               SUM(CASE WHEN SIT_CANCELADO = 'N' THEN 1 ELSE 0 END) as autos_ativos,
-               SUM(CASE WHEN SIT_CANCELADO = 'S' THEN 1 ELSE 0 END) as autos_cancelados,
-               GROUP_CONCAT(DISTINCT UF) as ufs,
-               GROUP_CONCAT(DISTINCT TIPO_INFRACAO) as tipos,
-               MIN(DAT_HORA_AUTO_INFRACAO) as primeiro_auto,
-               MAX(DAT_HORA_AUTO_INFRACAO) as ultimo_auto
-        FROM autos_infracao WHERE {where_ai}
-    """
+               SUM(CASE WHEN a.SIT_CANCELADO = 'N' THEN 1 ELSE 0 END) as autos_ativos,
+               SUM(CASE WHEN a.SIT_CANCELADO = 'S' THEN 1 ELSE 0 END) as autos_cancelados,
+               GROUP_CONCAT(DISTINCT a.UF) as ufs,
+               GROUP_CONCAT(DISTINCT a.TIPO_INFRACAO) as tipos,
+               MIN(a.DAT_HORA_AUTO_INFRACAO) as primeiro_auto,
+               MAX(a.DAT_HORA_AUTO_INFRACAO) as ultimo_auto
+        FROM autos_infracao a {ai_join} WHERE {ai_where}
+    """, ai_params).fetchone())
 
     # Value summary
-    val_sql = f"""
-        SELECT VAL_AUTO_INFRACAO, TIPO_MULTA, DES_STATUS_FORMULARIO
-        FROM autos_infracao WHERE {where_ai} AND SIT_CANCELADO = 'N'
-    """
+    val_rows = conn.execute(f"""
+        SELECT a.VAL_AUTO_INFRACAO, a.TIPO_MULTA, a.DES_STATUS_FORMULARIO
+        FROM autos_infracao a {ai_join} WHERE {ai_where} AND a.SIT_CANCELADO = 'N'
+    """, ai_params).fetchall()
 
-    # Embargos summary
-    te_sql = f"""
-        SELECT COUNT(*) as total_embargos,
-               SUM(CASE WHEN (SIT_DESEMBARGO IS NULL OR SIT_DESEMBARGO = '') AND SIT_CANCELADO = 'N' THEN 1 ELSE 0 END) as embargos_ativos,
-               SUM(CASE WHEN SIT_CANCELADO = 'S' THEN 1 ELSE 0 END) as embargos_cancelados,
-               GROUP_CONCAT(DISTINCT MUNICIPIO) as municipios
-        FROM termos_embargo WHERE {where_te}
-    """
-
-    ai_summary = dict(conn.execute(ai_sql, params).fetchone())
-    te_summary = dict(conn.execute(te_sql, params).fetchone())
-
-    # Calculate total values with proper error tracking
-    val_rows = conn.execute(val_sql, params).fetchall()
     total_valor = 0.0
     valores_invalidos = 0
     status_counts = {}
@@ -336,24 +383,33 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     if valores_invalidos:
         ai_summary['valores_nao_parseados'] = valores_invalidos
 
+    # Embargos summary
+    te_summary = dict(conn.execute(f"""
+        SELECT COUNT(*) as total_embargos,
+               SUM(CASE WHEN (t.SIT_DESEMBARGO IS NULL OR t.SIT_DESEMBARGO = '') AND t.SIT_CANCELADO = 'N' THEN 1 ELSE 0 END) as embargos_ativos,
+               SUM(CASE WHEN t.SIT_CANCELADO = 'S' THEN 1 ELSE 0 END) as embargos_cancelados,
+               GROUP_CONCAT(DISTINCT t.MUNICIPIO) as municipios
+        FROM termos_embargo t {te_join} WHERE {te_where}
+    """, te_params).fetchone())
+
     # Recent autos (last 10)
     recent_ai = conn.execute(f"""
-        SELECT NUM_AUTO_INFRACAO, DAT_HORA_AUTO_INFRACAO, VAL_AUTO_INFRACAO,
-               TIPO_INFRACAO, UF, MUNICIPIO, DES_STATUS_FORMULARIO,
-               DES_AUTO_INFRACAO, DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO
-        FROM autos_infracao WHERE {where_ai} AND SIT_CANCELADO = 'N'
-        ORDER BY DAT_HORA_AUTO_INFRACAO DESC LIMIT 10
-    """, params).fetchall()
+        SELECT a.NUM_AUTO_INFRACAO, a.DAT_HORA_AUTO_INFRACAO, a.VAL_AUTO_INFRACAO,
+               a.TIPO_INFRACAO, a.UF, a.MUNICIPIO, a.DES_STATUS_FORMULARIO,
+               a.DES_AUTO_INFRACAO, a.DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO
+        FROM autos_infracao a {ai_join} WHERE {ai_where} AND a.SIT_CANCELADO = 'N'
+        ORDER BY a.DAT_HORA_AUTO_INFRACAO DESC LIMIT 10
+    """, ai_params).fetchall()
 
     # Active embargos
     active_te = conn.execute(f"""
-        SELECT NUM_TAD, DAT_EMBARGO, QTD_AREA_EMBARGADA, UF, MUNICIPIO,
-               DES_TAD, DES_LOCALIZACAO, SIT_DESEMBARGO
-        FROM termos_embargo WHERE {where_te}
-            AND (SIT_DESEMBARGO IS NULL OR SIT_DESEMBARGO = '')
-            AND SIT_CANCELADO = 'N'
-        ORDER BY DAT_EMBARGO DESC LIMIT 10
-    """, params).fetchall()
+        SELECT t.NUM_TAD, t.DAT_EMBARGO, t.QTD_AREA_EMBARGADA, t.UF, t.MUNICIPIO,
+               t.DES_TAD, t.DES_LOCALIZACAO, t.SIT_DESEMBARGO
+        FROM termos_embargo t {te_join} WHERE {te_where}
+            AND (t.SIT_DESEMBARGO IS NULL OR t.SIT_DESEMBARGO = '')
+            AND t.SIT_CANCELADO = 'N'
+        ORDER BY t.DAT_EMBARGO DESC LIMIT 10
+    """, te_params).fetchall()
 
     conn.close()
 
