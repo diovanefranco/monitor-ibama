@@ -11,10 +11,10 @@ import consulta
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-me")
 
-# Login credentials (set via environment variables on Render)
-APP_USER = os.environ.get("APP_USER", "contato@diovanefranco.com.br")
-APP_PASS = os.environ.get("APP_PASS", "PantheraLeo.11")
-APP_CODE = os.environ.get("APP_CODE", "DF2030")
+# Login credentials – configure via Environment Variables no Render
+APP_USER = os.environ.get("APP_USER", "")
+APP_PASS = os.environ.get("APP_PASS", "")
+APP_CODE = os.environ.get("APP_CODE", "")
 
 
 def login_required(f):
