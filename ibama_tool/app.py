@@ -57,6 +57,12 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/health")
+def health():
+    """Public health check endpoint for Render (no login required)."""
+    return jsonify({"status": "ok"}), 200
+
+
 @app.route("/api/stats")
 @login_required
 def api_stats():
