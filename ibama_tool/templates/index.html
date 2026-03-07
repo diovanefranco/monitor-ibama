@@ -1121,17 +1121,18 @@
             y = doc.lastAutoTable.finalY + 8;
         }
 
-        if (d.embargos_ativos && d.embargos_ativos.length) {
+        const allEmb = d.todos_embargos || d.embargos_ativos || [];
+        if (allEmb.length) {
             if (y > 250) { doc.addPage(); y = 15; }
             doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(27,94,32);
-            doc.text('Embargos Ativos (' + d.embargos_ativos.length + ' registros)', margin, y); y += 3;
+            doc.text('Termos de Embargo (' + allEmb.length + ' registros)', margin, y); y += 3;
             doc.setTextColor(0);
             doc.autoTable({
                 startY: y,
-                head: [['Data','TAD','UF','Municipio','Area (ha)','Localizacao','Descricao']],
-                body: d.embargos_ativos.map(r => [
+                head: [['Data','TAD','UF','Municipio','Area (ha)','Status','Detalhe Desembargo','Descricao']],
+                body: allEmb.map(r => [
                     fmtData(r.DAT_EMBARGO), r.NUM_TAD||'-', r.UF||'-', r.MUNICIPIO||'-',
-                    r.QTD_AREA_EMBARGADA||'-', r.DES_LOCALIZACAO||'-', (r.DES_TAD||'').substring(0,80)
+                    r.QTD_AREA_EMBARGADA||'-', r.STATUS||'-', r.STATUS_DETALHE||'-', (r.DES_TAD||'').substring(0,80)
                 ]),
                 theme: 'striped',
                 headStyles: { fillColor: [46,125,50], fontSize: 7 },
