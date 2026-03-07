@@ -289,6 +289,13 @@ def _download_sema_db():
     """Download pre-built sema.db from GitHub Releases using curl (lightweight).
     Returns True if download succeeded."""
     import shutil
+    # Remove empty sema.db if it exists (created by sqlite3.connect)
+    if os.path.exists(_SEMA_DB_PATH) and os.path.getsize(_SEMA_DB_PATH) < 1_000_000:
+        try:
+            os.remove(_SEMA_DB_PATH)
+            print(f"SEMA self-heal: removed empty/small sema.db")
+        except OSError:
+            pass
     tmp = _SEMA_DB_PATH + ".tmp"
     if shutil.which("curl"):
         print("SEMA self-heal: downloading sema.db from GitHub via curl...")
@@ -463,22 +470,25 @@ def warmup_db():
         t = threading.Thread(target=_rebuild_ibama_background, daemon=True)
         t.start()
 
-    # SEMA warmup (independent - won't break if sema.db doesn't exist)
+    # SEMA warmup - check file exists and has real data BEFORE opening connection
+    # (sqlite3.connect creates an empty file if it doesn't exist!)
     sema_ok = False
-    try:
-        conn = consulta_sema.get_conn()
-        n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
-        conn.execute("SELECT COUNT(*) FROM sema_embargos").fetchone()
-        conn.execute("SELECT COUNT(*) FROM sema_outros_termos").fetchone()
-        conn.execute("SELECT COUNT(*) FROM sema_desembargos").fetchone()
-        conn.close()
-        if n > 0:
-            sema_ok = True
-            print(f"SEMA DB warmup OK ({n} autos)")
-        else:
-            print("SEMA DB warmup: table exists but is empty")
-    except Exception as e:
-        print(f"SEMA DB warmup skip: {e}")
+    sema_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sema.db")
+    if os.path.exists(sema_db) and os.path.getsize(sema_db) > 1_000_000:
+        try:
+            conn = consulta_sema.get_conn()
+            n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
+            conn.close()
+            if n > 0:
+                sema_ok = True
+                print(f"SEMA DB warmup OK ({n} autos)")
+            else:
+                print("SEMA DB warmup: table exists but is empty")
+        except Exception as e:
+            print(f"SEMA DB warmup skip: {e}")
+    else:
+        size = os.path.getsize(sema_db) if os.path.exists(sema_db) else 0
+        print(f"SEMA DB warmup skip: file missing or too small ({size} bytes)")
 
     # Self-heal: if SEMA DB is missing/empty, rebuild in background
     if not sema_ok and not _sema_rebuilding:

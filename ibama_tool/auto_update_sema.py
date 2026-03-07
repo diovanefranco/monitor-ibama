@@ -343,12 +343,16 @@ if __name__ == "__main__":
     print(f"Data dir: {DATA_DIR}")
     print()
 
-    # Quick check: if sema.db already exists and is recent, skip everything
+    # Quick check: if sema.db already exists, is recent AND has real data, skip
     if os.path.exists(SEMA_DB_PATH):
+        size_mb = os.path.getsize(SEMA_DB_PATH) / 1024 / 1024
         age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(SEMA_DB_PATH))).total_seconds() / 3600
-        if age <= 24:
-            print(f"sema.db is recent ({age:.0f}h old). Nada a fazer.")
+        if size_mb > 1 and age <= 24:
+            print(f"sema.db is recent ({age:.0f}h old, {size_mb:.0f}MB). Nada a fazer.")
             sys.exit(0)
+        elif size_mb <= 1:
+            print(f"sema.db exists but is too small ({size_mb:.2f}MB) - likely empty. Will re-download.")
+            os.remove(SEMA_DB_PATH)
 
     if not check_update_needed():
         print("Arquivos atualizados (< 24h). Nada a fazer.")
