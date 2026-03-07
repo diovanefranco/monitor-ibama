@@ -10,7 +10,7 @@ Runs independently from IBAMA module (separate DB, separate files).
 Robust retry: warmup probe + 5 attempts per page with exponential backoff
 + up to 2 full global retries if all layers fail.
 """
-import os, sys, subprocess, json, time, ssl
+import os, sys, subprocess, json, time, ssl, shutil
 from datetime import datetime
 from urllib.request import Request, urlopen
 from urllib.error import URLError
@@ -27,6 +27,10 @@ _SSL_CTX.verify_mode = ssl.CERT_NONE
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(_SCRIPT_DIR, "sema_data")
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# GitHub Releases mirror for pre-built sema.db (fallback when GeoServer is unreachable)
+GH_RELEASE = "https://github.com/diovanefranco/monitor-ibama/releases/download/data-2026-03-06"
+SEMA_DB_PATH = os.path.join(_SCRIPT_DIR, "sema.db")
 
 # GeoServer WFS base URL with public authkey
 WFS_BASE = "https://geo.sema.mt.gov.br/geoserver/Geoportal/ows"
@@ -285,10 +289,66 @@ def download_all_layers():
     return success_count
 
 
+def download_sema_db_fallback():
+    """Download pre-built sema.db from GitHub Releases as fallback.
+    Used when GeoServer is unreachable (e.g., from overseas servers like Render)."""
+    url = f"{GH_RELEASE}/sema.db"
+    print(f"\n  Fallback: downloading pre-built sema.db from GitHub Releases...")
+
+    # Try curl first
+    if shutil.which("curl"):
+        tmp = SEMA_DB_PATH + ".tmp"
+        result = subprocess.run(
+            ["curl", "-fSL", "--retry", "3", "--retry-delay", "5",
+             "--max-time", "300", "--connect-timeout", "30", "-o", tmp, url],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 100000:
+            os.rename(tmp, SEMA_DB_PATH)
+            size_mb = os.path.getsize(SEMA_DB_PATH) / 1024 / 1024
+            print(f"  OK (GitHub/curl): sema.db {size_mb:.1f}MB")
+            return True
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+    # Try Python urllib
+    try:
+        from urllib.request import Request, urlopen as _urlopen
+        headers = {"User-Agent": "Mozilla/5.0 (Monitor-SEMA/1.0)"}
+        req = Request(url, headers=headers)
+        response = _urlopen(req, timeout=300)
+        tmp = SEMA_DB_PATH + ".tmp"
+        with open(tmp, "wb") as f:
+            while True:
+                chunk = response.read(1024 * 256)
+                if not chunk:
+                    break
+                f.write(chunk)
+        if os.path.exists(tmp) and os.path.getsize(tmp) > 100000:
+            os.rename(tmp, SEMA_DB_PATH)
+            size_mb = os.path.getsize(SEMA_DB_PATH) / 1024 / 1024
+            print(f"  OK (GitHub/python): sema.db {size_mb:.1f}MB")
+            return True
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    except Exception as e:
+        print(f"  GitHub urllib failed: {e}")
+
+    print(f"  ERRO: fallback download failed")
+    return False
+
+
 if __name__ == "__main__":
     print(f"=== SEMA-MT Auto-Update ===")
     print(f"Data dir: {DATA_DIR}")
     print()
+
+    # Quick check: if sema.db already exists and is recent, skip everything
+    if os.path.exists(SEMA_DB_PATH):
+        age = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(SEMA_DB_PATH))).total_seconds() / 3600
+        if age <= 24:
+            print(f"sema.db is recent ({age:.0f}h old). Nada a fazer.")
+            sys.exit(0)
 
     if not check_update_needed():
         print("Arquivos atualizados (< 24h). Nada a fazer.")
@@ -299,8 +359,12 @@ if __name__ == "__main__":
     server_alive = warmup_geoserver()
 
     if not server_alive:
-        # Try anyway - sometimes the probe fails but downloads work
-        print("Server probe failed, but will attempt downloads anyway...\n")
+        # GeoServer unreachable - try GitHub fallback directly
+        print("GeoServer unreachable. Trying GitHub Releases fallback...")
+        if download_sema_db_fallback():
+            print("\nSEMA DB downloaded from GitHub Releases successfully.")
+            sys.exit(0)
+        print("GitHub fallback also failed. Will attempt GeoServer downloads anyway...\n")
 
     # Global retry loop: if all downloads fail, wait and try again
     for global_attempt in range(1, MAX_GLOBAL_RETRIES + 1):
@@ -327,6 +391,10 @@ if __name__ == "__main__":
     if has_any_data:
         rebuild_db()
     else:
-        print("\nNenhum arquivo de dados encontrado. SEMA DB nao sera criado.")
+        # Last resort: try GitHub fallback for pre-built DB
+        print("\nNenhum arquivo de dados encontrado. Tentando fallback GitHub...")
+        if download_sema_db_fallback():
+            print("SEMA DB downloaded from GitHub Releases as last resort.")
+            sys.exit(0)
         print("O sistema continuara funcionando apenas com dados do IBAMA.")
         sys.exit(0)  # Exit cleanly - don't break the build

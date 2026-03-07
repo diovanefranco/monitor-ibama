@@ -2,7 +2,8 @@
 """
 IBAMA Monitor - Web interface for searching IBAMA enforcement data.
 """
-import os, sys, subprocess, threading
+import os, sys, subprocess, threading, time
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 
@@ -281,7 +282,8 @@ def _rebuild_ibama_background():
 
 
 def _rebuild_sema_background():
-    """Run SEMA auto-update in background thread to self-heal empty DB."""
+    """Run SEMA auto-update in background thread to self-heal empty DB.
+    Tries GeoServer first, falls back to pre-built sema.db from GitHub."""
     global _sema_rebuilding
     _sema_rebuilding = True
     print("SEMA self-heal: starting background download...")
@@ -312,6 +314,98 @@ def _rebuild_sema_background():
         print(f"SEMA self-heal error: {e}")
     finally:
         _sema_rebuilding = False
+
+
+def _scheduled_update():
+    """Background thread: runs daily updates at midnight BRT (03:00 UTC).
+    If it fails, retries at 5 AM BRT (08:00 UTC)."""
+    BRT_OFFSET = -3  # BRT = UTC-3
+    while True:
+        try:
+            now_utc = datetime.utcnow()
+            now_brt = now_utc + timedelta(hours=BRT_OFFSET)
+
+            # Next midnight BRT = 03:00 UTC
+            next_midnight_brt = now_brt.replace(hour=0, minute=0, second=0, microsecond=0)
+            if next_midnight_brt <= now_brt:
+                next_midnight_brt += timedelta(days=1)
+            next_run_utc = next_midnight_brt - timedelta(hours=BRT_OFFSET)
+            wait_secs = (next_run_utc - now_utc).total_seconds()
+
+            print(f"Scheduled update: next run at {next_midnight_brt:%Y-%m-%d %H:%M} BRT ({wait_secs/3600:.1f}h from now)")
+            time.sleep(max(wait_secs, 60))
+
+            print(f"\n=== Scheduled update starting at {datetime.utcnow():%H:%M:%S} UTC ===")
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+
+            # Update IBAMA
+            ibama_ok = False
+            try:
+                r = subprocess.run(
+                    [sys.executable, "-u", os.path.join(script_dir, "auto_update.py")],
+                    capture_output=True, text=True, timeout=900
+                )
+                print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
+                ibama_ok = r.returncode == 0
+            except Exception as e:
+                print(f"Scheduled IBAMA update error: {e}")
+
+            # Update SEMA
+            sema_ok = False
+            try:
+                r = subprocess.run(
+                    [sys.executable, "-u", os.path.join(script_dir, "auto_update_sema.py")],
+                    capture_output=True, text=True, timeout=600
+                )
+                print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
+                sema_ok = r.returncode == 0
+            except Exception as e:
+                print(f"Scheduled SEMA update error: {e}")
+
+            if not ibama_ok or not sema_ok:
+                # Retry at 5 AM BRT (08:00 UTC)
+                now_utc = datetime.utcnow()
+                now_brt = now_utc + timedelta(hours=BRT_OFFSET)
+                retry_brt = now_brt.replace(hour=5, minute=0, second=0, microsecond=0)
+                if retry_brt <= now_brt:
+                    retry_brt += timedelta(days=1)
+                retry_utc = retry_brt - timedelta(hours=BRT_OFFSET)
+                wait_retry = (retry_utc - now_utc).total_seconds()
+
+                if wait_retry > 0 and wait_retry < 86400:
+                    failed = []
+                    if not ibama_ok:
+                        failed.append("IBAMA")
+                    if not sema_ok:
+                        failed.append("SEMA")
+                    print(f"Scheduled update: {', '.join(failed)} failed. Retry at 5 AM BRT ({wait_retry/3600:.1f}h)")
+                    time.sleep(wait_retry)
+
+                    print(f"\n=== Retry update at {datetime.utcnow():%H:%M:%S} UTC ===")
+                    if not ibama_ok:
+                        try:
+                            r = subprocess.run(
+                                [sys.executable, "-u", os.path.join(script_dir, "auto_update.py")],
+                                capture_output=True, text=True, timeout=900
+                            )
+                            print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
+                        except Exception as e:
+                            print(f"Retry IBAMA error: {e}")
+                    if not sema_ok:
+                        try:
+                            r = subprocess.run(
+                                [sys.executable, "-u", os.path.join(script_dir, "auto_update_sema.py")],
+                                capture_output=True, text=True, timeout=600
+                            )
+                            print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
+                        except Exception as e:
+                            print(f"Retry SEMA error: {e}")
+
+            print(f"=== Scheduled update complete ===\n")
+
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+            time.sleep(3600)  # Wait 1h on unexpected error
 
 
 def warmup_db():
@@ -361,6 +455,10 @@ def warmup_db():
 
 
 warmup_db()
+
+# Start scheduled daily update thread (midnight BRT, retry 5 AM BRT)
+_scheduler_thread = threading.Thread(target=_scheduled_update, daemon=True)
+_scheduler_thread.start()
 
 
 if __name__ == "__main__":
