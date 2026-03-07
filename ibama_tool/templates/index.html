@@ -1020,11 +1020,11 @@
             doc.setTextColor(27,94,32);
             doc.text(title + ' (' + records.length + ' registros)', margin, y); y += 3;
             doc.setTextColor(0);
-            const head = [['Fonte','Data','Tipo','Documento','Municipio']];
+            const head = [['Fonte','Data','Tipo','Documento','Processo','Municipio']];
             if (showValor) head[0].push('Valor');
             head[0].push('Situacao','Descricao');
             const body = records.map(r => {
-                const row = [r.FONTE||'-', fmtData(r.DATA_DOCUMENTO), r.TIPO_DOCUMENTO||'-', r.NUMERO_DOCUMENTO||'-', r.MUNICIPIO||'-'];
+                const row = [r.FONTE||'-', fmtData(r.DATA_DOCUMENTO), r.TIPO_DOCUMENTO||'-', r.NUMERO_DOCUMENTO||'-', r.NUMERO_PROCESSO||'-', r.MUNICIPIO||'-'];
                 if (showValor) { try { const n=parseFloat(r.VALOR_TOTAL_MULTA); row.push(isNaN(n)||n===0?'-':'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2})); } catch{row.push('-');} }
                 row.push(r.SITUACAO||'-');
                 row.push((r.DESCRICAO_OCORRENCIA||r.DESCRICAO_DANO||'').substring(0,80));
@@ -1104,9 +1104,10 @@
             doc.setTextColor(0);
             doc.autoTable({
                 startY: y,
-                head: [['Data','Auto','Tipo','UF','Municipio','Valor','Status','Descricao']],
+                head: [['Data','Auto','Processo','Tipo','UF','Municipio','Valor','Status','Descricao']],
                 body: d.ultimos_autos.map(r => [
-                    fmtData(r.DAT_HORA_AUTO_INFRACAO), r.NUM_AUTO_INFRACAO||'-', r.TIPO_INFRACAO||'-',
+                    fmtData(r.DAT_HORA_AUTO_INFRACAO), r.NUM_AUTO_INFRACAO||'-',
+                    r.NU_PROCESSO_FORMATADO||r.NUM_PROCESSO||'-', r.TIPO_INFRACAO||'-',
                     r.UF||'-', r.MUNICIPIO||'-',
                     (()=>{ try{const n=parseFloat(String(r.VAL_AUTO_INFRACAO).replace(/\./g,'').replace(',','.'));return isNaN(n)||n===0?'-':'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2});}catch{return '-';}})(),
                     r.DES_STATUS_FORMULARIO||'-',
@@ -1129,9 +1130,9 @@
             doc.setTextColor(0);
             doc.autoTable({
                 startY: y,
-                head: [['Data','TAD','UF','Municipio','Area (ha)','Status','Detalhe Desembargo','Descricao']],
+                head: [['Data','TAD','Processo','UF','Municipio','Area (ha)','Status','Detalhe Desembargo','Descricao']],
                 body: allEmb.map(r => [
-                    fmtData(r.DAT_EMBARGO), r.NUM_TAD||'-', r.UF||'-', r.MUNICIPIO||'-',
+                    fmtData(r.DAT_EMBARGO), r.NUM_TAD||'-', r.NUM_PROCESSO||'-', r.UF||'-', r.MUNICIPIO||'-',
                     r.QTD_AREA_EMBARGADA||'-', r.STATUS||'-', r.STATUS_DETALHE||'-', (r.DES_TAD||'').substring(0,80)
                 ]),
                 theme: 'striped',
