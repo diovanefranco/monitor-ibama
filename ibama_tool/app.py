@@ -2,7 +2,7 @@
 """
 IBAMA Monitor - Web interface for searching IBAMA enforcement data.
 """
-import os, sys, subprocess, threading, time
+import os, sys, subprocess, threading, time, urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
@@ -431,12 +431,70 @@ def warmup_db():
 
 warmup_db()
 
-# Pre-compute stats cache in background so /api/stats responds instantly
-threading.Thread(target=refresh_stats_cache, daemon=True).start()
+
+def _deep_warmup():
+    """Background: touch main indexes/tables so SQLite pages are in OS cache.
+    This makes the FIRST user query fast instead of cold-starting from disk."""
+    import time as _t
+    _t.sleep(2)  # let gunicorn finish booting
+    print("Deep warmup: pre-loading SQLite pages...")
+    try:
+        conn = consulta.get_conn()
+        # Read a sample from each main table to warm OS page cache
+        conn.execute("SELECT * FROM autos_infracao ORDER BY rowid DESC LIMIT 50").fetchall()
+        conn.execute("SELECT * FROM termos_embargo ORDER BY rowid DESC LIMIT 50").fetchall()
+        # Touch name-search paths (most common query pattern)
+        conn.execute("SELECT COUNT(*) FROM autos_infracao WHERE NOME_INFRATOR LIKE 'ZZZ%'").fetchone()
+        conn.execute("SELECT COUNT(*) FROM termos_embargo WHERE NOME_EMBARGADO LIKE 'ZZZ%'").fetchone()
+        conn.close()
+        print("Deep warmup: IBAMA OK")
+    except Exception as e:
+        print(f"Deep warmup IBAMA skip: {e}")
+    try:
+        conn = consulta_sema.get_conn()
+        for tbl in ['sema_autos_infracao', 'sema_outros_termos', 'sema_embargos', 'sema_desembargos']:
+            conn.execute(f"SELECT * FROM {tbl} ORDER BY rowid DESC LIMIT 50").fetchall()
+        conn.close()
+        print("Deep warmup: SEMA OK")
+    except Exception as e:
+        print(f"Deep warmup SEMA skip: {e}")
+    print("Deep warmup: done")
+
+
+# Pre-compute stats cache + deep warmup in background
+def _startup_background():
+    refresh_stats_cache()
+    _deep_warmup()
+
+threading.Thread(target=_startup_background, daemon=True).start()
 
 # Start scheduled daily update thread (midnight BRT, retry 5 AM BRT)
 _scheduler_thread = threading.Thread(target=_scheduled_update, daemon=True)
 _scheduler_thread.start()
+
+
+# ── Keep-alive self-ping ─────────────────────────────────────
+# Pings own /health endpoint every 5 min to prevent Render from sleeping.
+_SELF_URL = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
+
+
+def _keep_alive():
+    """Self-ping loop: hits /health every 5 minutes to stay warm."""
+    if not _SELF_URL:
+        print("Keep-alive: RENDER_EXTERNAL_URL not set, skipping")
+        return
+    time.sleep(30)  # Wait for app to start
+    url = f"{_SELF_URL}/health"
+    print(f"Keep-alive: pinging {url} every 5 min")
+    while True:
+        try:
+            urllib.request.urlopen(url, timeout=10)
+        except Exception:
+            pass
+        time.sleep(300)  # 5 minutes
+
+
+threading.Thread(target=_keep_alive, daemon=True).start()
 
 
 if __name__ == "__main__":
