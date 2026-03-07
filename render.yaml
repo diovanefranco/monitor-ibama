@@ -7,7 +7,7 @@ services:
       pip install -r requirements.txt
       python auto_update.py
       python -u auto_update_sema.py || echo "SEMA update failed (server may be down) - continuing without SEMA data"
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"

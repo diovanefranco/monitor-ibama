@@ -281,35 +281,77 @@ def _rebuild_ibama_background():
         _ibama_rebuilding = False
 
 
+_GH_SEMA_URL = "https://github.com/diovanefranco/monitor-ibama/releases/download/data-2026-03-06/sema.db"
+_SEMA_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sema.db")
+
+
+def _download_sema_db():
+    """Download pre-built sema.db from GitHub Releases using curl (lightweight).
+    Returns True if download succeeded."""
+    import shutil
+    tmp = _SEMA_DB_PATH + ".tmp"
+    if shutil.which("curl"):
+        print("SEMA self-heal: downloading sema.db from GitHub via curl...")
+        result = subprocess.run(
+            ["curl", "-fSL", "--retry", "3", "--retry-delay", "5",
+             "--max-time", "300", "--connect-timeout", "30", "-o", tmp, _GH_SEMA_URL],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 100000:
+            os.rename(tmp, _SEMA_DB_PATH)
+            size_mb = os.path.getsize(_SEMA_DB_PATH) / 1024 / 1024
+            print(f"SEMA self-heal: downloaded sema.db OK ({size_mb:.1f}MB)")
+            return True
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        print(f"SEMA self-heal: curl failed (rc={result.returncode})")
+    else:
+        print("SEMA self-heal: curl not available, trying urllib...")
+    # Fallback: Python urllib (no extra subprocess)
+    try:
+        from urllib.request import Request, urlopen as _urlopen
+        req = Request(_GH_SEMA_URL, headers={"User-Agent": "Monitor-SEMA/1.0"})
+        resp = _urlopen(req, timeout=300)
+        with open(tmp, "wb") as f:
+            while True:
+                chunk = resp.read(256 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+        if os.path.exists(tmp) and os.path.getsize(tmp) > 100000:
+            os.rename(tmp, _SEMA_DB_PATH)
+            size_mb = os.path.getsize(_SEMA_DB_PATH) / 1024 / 1024
+            print(f"SEMA self-heal: downloaded sema.db OK via urllib ({size_mb:.1f}MB)")
+            return True
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    except Exception as e:
+        print(f"SEMA self-heal: urllib failed: {e}")
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return False
+
+
 def _rebuild_sema_background():
-    """Run SEMA auto-update in background thread to self-heal empty DB.
-    Tries GeoServer first, falls back to pre-built sema.db from GitHub."""
+    """Download pre-built sema.db from GitHub Releases (lightweight, no subprocess)."""
     global _sema_rebuilding
     _sema_rebuilding = True
-    print("SEMA self-heal: starting background download...")
+    print("SEMA self-heal: starting lightweight download...")
     try:
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auto_update_sema.py")
-        result = subprocess.run(
-            [sys.executable, "-u", script],
-            capture_output=True, text=True, timeout=600  # 10 min max
-        )
-        print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
-        if result.returncode != 0 and result.stderr:
-            print(f"SEMA self-heal stderr: {result.stderr[-300:]}")
-
-        # Verify it worked
-        try:
-            conn = consulta_sema.get_conn()
-            n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
-            conn.close()
-            if n > 0:
-                print(f"SEMA self-heal SUCCESS: {n} autos loaded")
-            else:
-                print("SEMA self-heal: DB still empty after rebuild")
-        except Exception:
-            print("SEMA self-heal: DB still not available after rebuild")
-    except subprocess.TimeoutExpired:
-        print("SEMA self-heal: timeout after 10 minutes")
+        if _download_sema_db():
+            # Verify it worked
+            try:
+                conn = consulta_sema.get_conn()
+                n = conn.execute("SELECT COUNT(*) FROM sema_autos_infracao").fetchone()[0]
+                conn.close()
+                if n > 0:
+                    print(f"SEMA self-heal SUCCESS: {n} autos loaded")
+                else:
+                    print("SEMA self-heal: DB downloaded but tables empty")
+            except Exception as e:
+                print(f"SEMA self-heal: DB downloaded but verify failed: {e}")
+        else:
+            print("SEMA self-heal: all download methods failed")
     except Exception as e:
         print(f"SEMA self-heal error: {e}")
     finally:
@@ -350,15 +392,10 @@ def _scheduled_update():
             except Exception as e:
                 print(f"Scheduled IBAMA update error: {e}")
 
-            # Update SEMA
+            # Update SEMA (lightweight direct download)
             sema_ok = False
             try:
-                r = subprocess.run(
-                    [sys.executable, "-u", os.path.join(script_dir, "auto_update_sema.py")],
-                    capture_output=True, text=True, timeout=600
-                )
-                print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
-                sema_ok = r.returncode == 0
+                sema_ok = _download_sema_db()
             except Exception as e:
                 print(f"Scheduled SEMA update error: {e}")
 
@@ -393,11 +430,7 @@ def _scheduled_update():
                             print(f"Retry IBAMA error: {e}")
                     if not sema_ok:
                         try:
-                            r = subprocess.run(
-                                [sys.executable, "-u", os.path.join(script_dir, "auto_update_sema.py")],
-                                capture_output=True, text=True, timeout=600
-                            )
-                            print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
+                            _download_sema_db()
                         except Exception as e:
                             print(f"Retry SEMA error: {e}")
 
