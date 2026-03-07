@@ -593,21 +593,21 @@
         if (d.ultimos_autos && d.ultimos_autos.length) {
             const n = d.ultimos_autos.length;
             h += `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>Autos de Infracao <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#collapse-ib-autos">Mostrar/Ocultar</button></h5>`;
-            h += `<div class="collapse show" id="collapse-ib-autos"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data</th><th>Auto</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>`;
-            d.ultimos_autos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td>${esc(r.NUM_AUTO_INFRACAO)}</td><td>${esc(r.TIPO_INFRACAO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td><td>${esc(r.DES_STATUS_FORMULARIO)}</td></tr>`; });
+            h += `<div class="collapse show" id="collapse-ib-autos"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data</th><th>Auto</th><th>Processo</th><th>Tipo</th><th>UF</th><th>Municipio</th><th>Valor</th><th>Status</th></tr></thead><tbody>`;
+            d.ultimos_autos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td>${esc(r.NUM_AUTO_INFRACAO)}</td><td>${esc(r.NUM_PROCESSO||'')}</td><td>${esc(r.TIPO_INFRACAO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td><td>${esc(r.DES_STATUS_FORMULARIO)}</td></tr>`; });
             h += '</tbody></table></div></div></div></div>';
         }
         const embargos = d.todos_embargos || d.embargos_ativos || [];
         if (embargos.length) {
             const n = embargos.length;
             h += `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>Termos de Embargo <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#collapse-ib-emb">Mostrar/Ocultar</button></h5>`;
-            h += `<div class="collapse show" id="collapse-ib-emb"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data Embargo</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Status</th><th>Detalhe Desembargo</th></tr></thead><tbody>`;
+            h += `<div class="collapse show" id="collapse-ib-emb"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data Embargo</th><th>TAD</th><th>Processo</th><th>UF</th><th>Municipio</th><th>Area</th><th>Status</th><th>Detalhe Desembargo</th></tr></thead><tbody>`;
             embargos.forEach(r => {
                 let statusBadge;
                 if (r.STATUS === 'ATIVO') statusBadge = '<span class="badge badge-ativo">ATIVO</span>';
                 else if (r.STATUS && r.STATUS.startsWith('DESEMBARGADO')) statusBadge = `<span class="badge badge-desembargado">${esc(r.STATUS)}</span>`;
                 else statusBadge = `<span class="badge badge-cancelado">${esc(r.STATUS||'')}</span>`;
-                h += `<tr><td>${fmtData(r.DAT_EMBARGO)}</td><td>${esc(r.NUM_TAD)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${statusBadge}</td><td><small>${esc(r.STATUS_DETALHE||'')}</small></td></tr>`;
+                h += `<tr><td>${fmtData(r.DAT_EMBARGO)}</td><td>${esc(r.NUM_TAD)}</td><td>${esc(r.NUM_PROCESSO||'')}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${statusBadge}</td><td><small>${esc(r.STATUS_DETALHE||'')}</small></td></tr>`;
             });
             h += '</tbody></table></div></div></div></div>';
         }
@@ -758,10 +758,10 @@
             if (!recentes || !recentes.length) return '';
             const n = recentes.length;
             let s = `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>${titulo} <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#${collapseId}">Mostrar/Ocultar</button></h5>`;
-            s += `<div class="collapse show" id="${collapseId}"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Municipio</th>${showValor?'<th>Valor</th>':''}<th>Situacao</th><th>Descricao</th></tr></thead><tbody>`;
+            s += `<div class="collapse show" id="${collapseId}"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Fonte</th><th>Data</th><th>Tipo</th><th>Documento</th><th>Processo</th><th>Municipio</th>${showValor?'<th>Valor</th>':''}<th>Situacao</th><th>Descricao</th></tr></thead><tbody>`;
             recentes.forEach(r => {
                 const desc = (r.DESCRICAO_OCORRENCIA||r.DESCRICAO_DANO||'').substring(0,60);
-                s += `<tr><td>${fonteBadge(r.FONTE)}</td><td>${fmtData(r.DATA_DOCUMENTO)}</td><td>${esc(r.TIPO_DOCUMENTO)}</td><td>${esc(r.NUMERO_DOCUMENTO)}</td><td>${esc(r.MUNICIPIO)}</td>`;
+                s += `<tr><td>${fonteBadge(r.FONTE)}</td><td>${fmtData(r.DATA_DOCUMENTO)}</td><td>${esc(r.TIPO_DOCUMENTO)}</td><td>${esc(r.NUMERO_DOCUMENTO)}</td><td>${esc(r.NUMERO_PROCESSO||'')}</td><td>${esc(r.MUNICIPIO)}</td>`;
                 if (showValor) s += `<td>${fmtValorNum(r.VALOR_TOTAL_MULTA)}</td>`;
                 s += `<td>${esc(r.SITUACAO||'')}</td><td title="${esc(r.DESCRICAO_OCORRENCIA||'')}">${esc(desc)}</td></tr>`;
             });
