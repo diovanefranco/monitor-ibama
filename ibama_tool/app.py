@@ -317,8 +317,8 @@ def _rebuild_ibama_background():
 
 def _scheduled_update():
     """Background thread: runs daily updates at midnight BRT (03:00 UTC).
-    If it fails, retries at 5 AM BRT (08:00 UTC).
-    NOTE: Only updates IBAMA. SEMA is provided via build artifact (verify_sema_db.py).
+    Updates both IBAMA and SEMA-MT data.
+    If any fails, retries at 5 AM BRT (08:00 UTC).
     """
     BRT_OFFSET = -3  # BRT = UTC-3
     while True:
@@ -339,7 +339,7 @@ def _scheduled_update():
             print(f"\n=== Scheduled update starting at {datetime.utcnow():%H:%M:%S} UTC ===")
             script_dir = os.path.dirname(os.path.abspath(__file__))
 
-            # Update IBAMA
+            # ── Update IBAMA ──
             ibama_ok = False
             try:
                 r = subprocess.run(
@@ -351,8 +351,22 @@ def _scheduled_update():
             except Exception as e:
                 print(f"Scheduled IBAMA update error: {e}")
 
-            if not ibama_ok:
-                # Retry at 5 AM BRT (08:00 UTC)
+            # ── Update SEMA-MT ──
+            sema_ok = False
+            try:
+                r = subprocess.run(
+                    [sys.executable, "-u", os.path.join(script_dir, "auto_update_sema.py")],
+                    capture_output=True, text=True, timeout=2400  # 40 min (21 layers)
+                )
+                print(r.stdout[-500:] if len(r.stdout) > 500 else r.stdout)
+                sema_ok = r.returncode == 0
+            except subprocess.TimeoutExpired:
+                print("Scheduled SEMA update: timeout after 40 minutes")
+            except Exception as e:
+                print(f"Scheduled SEMA update error: {e}")
+
+            # ── Retry failures at 5 AM BRT ──
+            if not ibama_ok or not sema_ok:
                 now_utc = datetime.utcnow()
                 now_brt = now_utc + timedelta(hours=BRT_OFFSET)
                 retry_brt = now_brt.replace(hour=5, minute=0, second=0, microsecond=0)
@@ -362,22 +376,40 @@ def _scheduled_update():
                 wait_retry = (retry_utc - now_utc).total_seconds()
 
                 if 0 < wait_retry < 86400:
-                    print(f"Scheduled update: IBAMA failed. Retry at 5 AM BRT ({wait_retry/3600:.1f}h)")
+                    failed = []
+                    if not ibama_ok:
+                        failed.append("IBAMA")
+                    if not sema_ok:
+                        failed.append("SEMA")
+                    print(f"Scheduled update: {', '.join(failed)} failed. Retry at 5 AM BRT ({wait_retry/3600:.1f}h)")
                     time.sleep(wait_retry)
 
                     print(f"\n=== Retry update at {datetime.utcnow():%H:%M:%S} UTC ===")
-                    try:
-                        r = subprocess.run(
-                            [sys.executable, "-u", os.path.join(script_dir, "auto_update.py")],
-                            capture_output=True, text=True, timeout=900
-                        )
-                        print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
-                    except Exception as e:
-                        print(f"Retry IBAMA error: {e}")
+
+                    if not ibama_ok:
+                        try:
+                            r = subprocess.run(
+                                [sys.executable, "-u", os.path.join(script_dir, "auto_update.py")],
+                                capture_output=True, text=True, timeout=900
+                            )
+                            print(r.stdout[-300:] if len(r.stdout) > 300 else r.stdout)
+                        except Exception as e:
+                            print(f"Retry IBAMA error: {e}")
+
+                    if not sema_ok:
+                        try:
+                            r = subprocess.run(
+                                [sys.executable, "-u", os.path.join(script_dir, "auto_update_sema.py")],
+                                capture_output=True, text=True, timeout=2400
+                            )
+                            print(r.stdout[-500:] if len(r.stdout) > 500 else r.stdout)
+                        except Exception as e:
+                            print(f"Retry SEMA error: {e}")
 
             print(f"=== Scheduled update complete ===\n")
-            # Refresh stats cache after DB update
+            # Refresh stats cache + re-warm SQLite after DB updates
             refresh_stats_cache()
+            _deep_warmup()
 
         except Exception as e:
             print(f"Scheduler error: {e}")

@@ -259,7 +259,7 @@ def rebuild_db():
     """Rebuild SQLite database from downloaded GeoJSON files."""
     print(f"\n[{datetime.now():%H:%M:%S}] Rebuilding SEMA database...")
     result = subprocess.run(
-        [sys.executable, os.path.join(_SCRIPT_DIR, "build_db_sema.py")],
+        [sys.executable, os.path.join(_SCRIPT_DIR, "build_db_sema_v2.py")],
         capture_output=True, text=True
     )
     print(result.stdout)
