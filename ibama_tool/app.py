@@ -11,6 +11,27 @@ import consulta
 import consulta_sema
 
 app = Flask(__name__)
+
+# ── Stats cache ──────────────────────────────────────────────
+# Pre-compute counts at startup so /api/stats responds instantly.
+_stats_cache = {"ibama": None, "sema": None}
+_stats_lock = threading.Lock()
+
+
+def refresh_stats_cache():
+    """Recalculate stats and store in memory (called at startup + after DB updates)."""
+    try:
+        ibama = consulta.stats()
+    except Exception:
+        ibama = None
+    try:
+        sema = consulta_sema.stats()
+    except Exception:
+        sema = None
+    with _stats_lock:
+        _stats_cache["ibama"] = ibama
+        _stats_cache["sema"] = sema
+    print("Stats cache refreshed")
 app.secret_key = os.environ.get("SECRET_KEY", "ibama-monitor-secret-key-change-me")
 
 # Login credentials – configure via Environment Variables no Render
@@ -68,6 +89,11 @@ def health():
 @login_required
 def api_stats():
     try:
+        with _stats_lock:
+            cached = _stats_cache.get("ibama")
+        if cached:
+            return jsonify(cached)
+        # Fallback: compute live (first request before cache is ready)
         return jsonify(consulta.stats())
     except Exception as e:
         return jsonify({"error": f"IBAMA DB erro: {e}"}), 503
@@ -149,6 +175,10 @@ def api_resumo():
 @login_required
 def api_sema_stats():
     try:
+        with _stats_lock:
+            cached = _stats_cache.get("sema")
+        if cached:
+            return jsonify(cached)
         return jsonify(consulta_sema.stats())
     except Exception as e:
         return jsonify({"error": f"SEMA DB nao disponivel: {e}"}), 503
@@ -282,6 +312,7 @@ def _rebuild_ibama_background():
         print(f"IBAMA self-heal error: {e}")
     finally:
         _ibama_rebuilding = False
+        refresh_stats_cache()
 
 
 def _scheduled_update():
@@ -345,6 +376,8 @@ def _scheduled_update():
                         print(f"Retry IBAMA error: {e}")
 
             print(f"=== Scheduled update complete ===\n")
+            # Refresh stats cache after DB update
+            refresh_stats_cache()
 
         except Exception as e:
             print(f"Scheduler error: {e}")
@@ -397,6 +430,9 @@ def warmup_db():
 
 
 warmup_db()
+
+# Pre-compute stats cache in background so /api/stats responds instantly
+threading.Thread(target=refresh_stats_cache, daemon=True).start()
 
 # Start scheduled daily update thread (midnight BRT, retry 5 AM BRT)
 _scheduler_thread = threading.Thread(target=_scheduled_update, daemon=True)
