@@ -365,7 +365,8 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
         SELECT a.DAT_HORA_AUTO_INFRACAO, a.SIT_CANCELADO, a.UF, a.TIPO_INFRACAO,
                a.VAL_AUTO_INFRACAO, a.TIPO_MULTA, a.DES_STATUS_FORMULARIO,
                a.NUM_AUTO_INFRACAO, a.MUNICIPIO,
-               a.DES_AUTO_INFRACAO, a.DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO
+               a.DES_AUTO_INFRACAO, a.DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO,
+               a.NUM_PROCESSO, a.NU_PROCESSO_FORMATADO
         FROM autos_infracao a {ai_join} WHERE {ai_where}
     """, ai_params).fetchall()
 
@@ -395,7 +396,8 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
                 ['DAT_HORA_AUTO_INFRACAO', 'SIT_CANCELADO', 'UF', 'TIPO_INFRACAO',
                  'VAL_AUTO_INFRACAO', 'TIPO_MULTA', 'DES_STATUS_FORMULARIO',
                  'NUM_AUTO_INFRACAO', 'MUNICIPIO',
-                 'DES_AUTO_INFRACAO', 'DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO'],
+                 'DES_AUTO_INFRACAO', 'DS_ENQUADRAMENTO_NAO_ADMINISTRATIVO',
+                 'NUM_PROCESSO', 'NU_PROCESSO_FORMATADO'],
                 r
             )))
         elif cancelado == 'S':
@@ -431,14 +433,14 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
         SELECT t.SIT_DESEMBARGO, t.SIT_CANCELADO, t.MUNICIPIO,
                t.NUM_TAD, t.DAT_EMBARGO, t.QTD_AREA_EMBARGADA, t.UF,
                t.DES_TAD, t.DES_LOCALIZACAO, t.DAT_DESEMBARGO,
-               t.TIPO_DESEMBARGO, t.DES_DESEMBARGO
+               t.TIPO_DESEMBARGO, t.DES_DESEMBARGO, t.NUM_PROCESSO
         FROM termos_embargo t {te_join} WHERE {te_where}
     """, te_params).fetchall()
 
     col_names = ['SIT_DESEMBARGO', 'SIT_CANCELADO', 'MUNICIPIO',
                  'NUM_TAD', 'DAT_EMBARGO', 'QTD_AREA_EMBARGADA', 'UF',
                  'DES_TAD', 'DES_LOCALIZACAO', 'DAT_DESEMBARGO',
-                 'TIPO_DESEMBARGO', 'DES_DESEMBARGO']
+                 'TIPO_DESEMBARGO', 'DES_DESEMBARGO', 'NUM_PROCESSO']
 
     # Process embargos in Python
     total_embargos = len(te_rows)
