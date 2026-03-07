@@ -512,13 +512,14 @@
             _lastResults['ib-embargos'] = { results: d.results, params: Object.fromEntries(p), title: 'Termos de Embargo - IBAMA' };
             showCount('count-ib-embargos', d.total, d.showing, 'ib-embargos');
             const t = document.getElementById('table-ib-embargos');
-            t.querySelector('thead').innerHTML = '<tr><th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>CPF/CNPJ</th><th>UF</th><th>Municipio</th><th>Area (ha)</th><th>Situacao</th></tr>';
+            t.querySelector('thead').innerHTML = '<tr><th></th><th>Data</th><th>TAD</th><th>Processo</th><th>Embargado</th><th>CPF/CNPJ</th><th>UF</th><th>Municipio</th><th>Area (ha)</th><th>Status</th></tr>';
             const tb = t.querySelector('tbody'); tb.innerHTML = '';
             d.results.forEach(r => {
                 const tr = document.createElement('tr'); tr.style.cursor='pointer';
-                let sit; if (r.SIT_CANCELADO==='S') sit='<span class="badge badge-cancelado">Cancelado</span>';
-                else if (r.SIT_DESEMBARGO) sit='<span class="badge badge-desembargado">Desembargado</span>';
-                else sit='<span class="badge badge-ativo">Embargado</span>';
+                let sit;
+                if (r.SIT_CANCELADO==='S') sit='<span class="badge badge-cancelado">Cancelado</span>';
+                else if (r.STATUS && r.STATUS.startsWith('DESEMBARGADO')) sit=`<span class="badge badge-desembargado" title="${esc(r.STATUS_DETALHE||'')}">${esc(r.STATUS)}</span>`;
+                else sit='<span class="badge badge-ativo">ATIVO</span>';
                 tr.dataset.record = JSON.stringify(r);
                 tr.innerHTML = `<td><button class="btn btn-sm btn-outline-secondary" onclick="toggleDetail(this, this.closest('tr').dataset.record)">+</button></td>
                     <td>${fmtData(r.DAT_EMBARGO)}</td><td><strong>${esc(r.NUM_TAD)}</strong>/${esc(r.SER_TAD)}</td>
@@ -585,7 +586,7 @@
         let h = '<div class="d-flex justify-content-end mb-2"><button class="btn btn-outline-danger btn-pdf" onclick="gerarPdfIbamaResumo()">PDF Relatorio Completo</button></div>';
         h += '<div class="row g-3 mb-4">';
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${ai.total_autos||0}</h2><div class="text-muted">Autos</div><small>${ai.autos_ativos||0} ativos / ${ai.autos_cancelados||0} cancelados</small></div></div>`;
-        h += `<div class="col-md-3"><div class="card stats-card"><h2>${te.total_embargos||0}</h2><div class="text-muted">Embargos</div><small>${te.embargos_ativos||0} ativos</small></div></div>`;
+        h += `<div class="col-md-3"><div class="card stats-card"><h2>${te.total_embargos||0}</h2><div class="text-muted">Embargos</div><small>${te.embargos_ativos||0} ativos / ${te.embargos_desembargados||0} desembargados</small></div></div>`;
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${esc(ai.valor_total||'N/A')}</h2><div class="text-muted">Valor Total</div></div></div>`;
         h += `<div class="col-md-3"><div class="card stats-card"><h2>${fmtData(ai.primeiro_auto)} - ${fmtData(ai.ultimo_auto)}</h2><div class="text-muted">Periodo</div><small>UFs: ${esc(ai.ufs||'-')}</small></div></div>`;
         h += '</div>';
@@ -596,11 +597,18 @@
             d.ultimos_autos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_HORA_AUTO_INFRACAO)}</td><td>${esc(r.NUM_AUTO_INFRACAO)}</td><td>${esc(r.TIPO_INFRACAO)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${fmtValor(r.VAL_AUTO_INFRACAO)}</td><td>${esc(r.DES_STATUS_FORMULARIO)}</td></tr>`; });
             h += '</tbody></table></div></div></div></div>';
         }
-        if (d.embargos_ativos && d.embargos_ativos.length) {
-            const n = d.embargos_ativos.length;
-            h += `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>Embargos Ativos <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#collapse-ib-emb">Mostrar/Ocultar</button></h5>`;
-            h += `<div class="collapse show" id="collapse-ib-emb"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Localizacao</th></tr></thead><tbody>`;
-            d.embargos_ativos.forEach(r => { h += `<tr><td>${fmtData(r.DAT_EMBARGO)}</td><td>${esc(r.NUM_TAD)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${esc(r.DES_LOCALIZACAO)}</td></tr>`; });
+        const embargos = d.todos_embargos || d.embargos_ativos || [];
+        if (embargos.length) {
+            const n = embargos.length;
+            h += `<div class="card mb-3"><div class="card-body"><h5 class="resumo-section d-flex justify-content-between align-items-center"><span>Termos de Embargo <span class="badge bg-secondary">${n}</span></span><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#collapse-ib-emb">Mostrar/Ocultar</button></h5>`;
+            h += `<div class="collapse show" id="collapse-ib-emb"><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Data Embargo</th><th>TAD</th><th>UF</th><th>Municipio</th><th>Area</th><th>Status</th><th>Detalhe Desembargo</th></tr></thead><tbody>`;
+            embargos.forEach(r => {
+                let statusBadge;
+                if (r.STATUS === 'ATIVO') statusBadge = '<span class="badge badge-ativo">ATIVO</span>';
+                else if (r.STATUS && r.STATUS.startsWith('DESEMBARGADO')) statusBadge = `<span class="badge badge-desembargado">${esc(r.STATUS)}</span>`;
+                else statusBadge = `<span class="badge badge-cancelado">${esc(r.STATUS||'')}</span>`;
+                h += `<tr><td>${fmtData(r.DAT_EMBARGO)}</td><td>${esc(r.NUM_TAD)}</td><td>${esc(r.UF)}</td><td>${esc(r.MUNICIPIO)}</td><td>${esc(r.QTD_AREA_EMBARGADA)}</td><td>${statusBadge}</td><td><small>${esc(r.STATUS_DETALHE||'')}</small></td></tr>`;
+            });
             h += '</tbody></table></div></div></div></div>';
         }
         document.getElementById('ib-resumo-content').innerHTML = h;
@@ -799,7 +807,8 @@
                 {h:'UF', f:'UF'},
                 {h:'Municipio', f:'MUNICIPIO'},
                 {h:'Area (ha)', f:'QTD_AREA_EMBARGADA'},
-                {h:'Situacao', f:r=>{ if(r.SIT_CANCELADO==='S') return 'Cancelado'; if(r.SIT_DESEMBARGO) return 'Desembargado'; return 'Embargado'; }}
+                {h:'Status', f:r=>{ if(r.SIT_CANCELADO==='S') return 'Cancelado'; return r.STATUS || (r.SIT_DESEMBARGO ? 'Desembargado' : 'ATIVO'); }},
+                {h:'Detalhe Desembargo', f:r=> r.STATUS_DETALHE || ''}
             ]
         },
         'ib-texto': {

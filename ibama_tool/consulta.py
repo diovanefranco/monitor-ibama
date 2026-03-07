@@ -249,6 +249,15 @@ def search_embargos(nome=None, cpf_cnpj=None, uf=None, municipio=None,
         r.pop('MUNICIPIO_NORM', None)
         r.pop('CPF_CNPJ_NORM', None)
         r.pop('NUM_PROCESSO_NORM', None)
+        # Status: ATIVO ou DESEMBARGADO
+        if r.get('SIT_DESEMBARGO') == 'S':
+            tipo = r.get('TIPO_DESEMBARGO') or ''
+            desc = r.get('DES_DESEMBARGO') or ''
+            r['STATUS'] = f"DESEMBARGADO ({tipo})" if tipo else "DESEMBARGADO"
+            r['STATUS_DETALHE'] = desc
+        else:
+            r['STATUS'] = 'ATIVO'
+            r['STATUS_DETALHE'] = ''
 
     conn.close()
     showing = len(results)
@@ -421,41 +430,56 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
     te_rows = conn.execute(f"""
         SELECT t.SIT_DESEMBARGO, t.SIT_CANCELADO, t.MUNICIPIO,
                t.NUM_TAD, t.DAT_EMBARGO, t.QTD_AREA_EMBARGADA, t.UF,
-               t.DES_TAD, t.DES_LOCALIZACAO
+               t.DES_TAD, t.DES_LOCALIZACAO, t.DAT_DESEMBARGO,
+               t.TIPO_DESEMBARGO, t.DES_DESEMBARGO
         FROM termos_embargo t {te_join} WHERE {te_where}
     """, te_params).fetchall()
+
+    col_names = ['SIT_DESEMBARGO', 'SIT_CANCELADO', 'MUNICIPIO',
+                 'NUM_TAD', 'DAT_EMBARGO', 'QTD_AREA_EMBARGADA', 'UF',
+                 'DES_TAD', 'DES_LOCALIZACAO', 'DAT_DESEMBARGO',
+                 'TIPO_DESEMBARGO', 'DES_DESEMBARGO']
 
     # Process embargos in Python
     total_embargos = len(te_rows)
     embargos_ativos = 0
     embargos_cancelados = 0
+    embargos_desembargados = 0
     municipios = set()
     active_embargos = []
+    all_embargos = []
 
     for r in te_rows:
         desembargo, cancelado, mun = r[0], r[1], r[2]
+        emb = dict(zip(col_names, r))
         if cancelado == 'S':
             embargos_cancelados += 1
-        elif not desembargo or desembargo == '':
+            emb['STATUS'] = 'Cancelado'
+            emb['STATUS_DETALHE'] = ''
+        elif desembargo == 'S':
+            embargos_desembargados += 1
+            tipo = emb.get('TIPO_DESEMBARGO') or ''
+            emb['STATUS'] = f"DESEMBARGADO ({tipo})" if tipo else "DESEMBARGADO"
+            emb['STATUS_DETALHE'] = emb.get('DES_DESEMBARGO') or ''
+        else:
             embargos_ativos += 1
-            active_embargos.append(dict(zip(
-                ['SIT_DESEMBARGO', 'SIT_CANCELADO', 'MUNICIPIO',
-                 'NUM_TAD', 'DAT_EMBARGO', 'QTD_AREA_EMBARGADA', 'UF',
-                 'DES_TAD', 'DES_LOCALIZACAO'],
-                r
-            )))
+            emb['STATUS'] = 'ATIVO'
+            emb['STATUS_DETALHE'] = ''
+            active_embargos.append(emb)
+        all_embargos.append(emb)
         if mun:
             municipios.add(mun)
 
     te_summary = {
         'total_embargos': total_embargos,
         'embargos_ativos': embargos_ativos,
+        'embargos_desembargados': embargos_desembargados,
         'embargos_cancelados': embargos_cancelados,
         'municipios': ','.join(sorted(municipios)) if municipios else None,
     }
 
-    # Sort active embargos by date
-    active_embargos.sort(key=lambda r: r.get('DAT_EMBARGO', ''), reverse=True)
+    # Sort all embargos by date
+    all_embargos.sort(key=lambda r: r.get('DAT_EMBARGO', ''), reverse=True)
 
     conn.close()
 
@@ -464,6 +488,7 @@ def resumo_autuado(nome=None, cpf_cnpj=None):
         "termos_embargo": te_summary,
         "ultimos_autos": recent_ai,
         "embargos_ativos": active_embargos,
+        "todos_embargos": all_embargos,
     }
 
 

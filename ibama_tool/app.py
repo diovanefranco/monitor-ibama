@@ -245,6 +245,39 @@ def api_sema_resumo():
 
 
 _sema_rebuilding = False  # flag to prevent concurrent rebuilds
+_ibama_rebuilding = False
+
+
+def _rebuild_ibama_background():
+    """Run IBAMA auto-update in background thread to self-heal missing DB."""
+    global _ibama_rebuilding
+    _ibama_rebuilding = True
+    print("IBAMA self-heal: starting background download...")
+    try:
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auto_update.py")
+        result = subprocess.run(
+            [sys.executable, "-u", script],
+            capture_output=True, text=True, timeout=900  # 15 min max
+        )
+        print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+        if result.returncode != 0 and result.stderr:
+            print(f"IBAMA self-heal stderr: {result.stderr[-300:]}")
+        try:
+            conn = consulta.get_conn()
+            n = conn.execute("SELECT COUNT(*) FROM autos_infracao").fetchone()[0]
+            conn.close()
+            if n > 0:
+                print(f"IBAMA self-heal SUCCESS: {n} autos loaded")
+            else:
+                print("IBAMA self-heal: DB still empty after rebuild")
+        except Exception:
+            print("IBAMA self-heal: DB still not available after rebuild")
+    except subprocess.TimeoutExpired:
+        print("IBAMA self-heal: timeout after 15 minutes")
+    except Exception as e:
+        print(f"IBAMA self-heal error: {e}")
+    finally:
+        _ibama_rebuilding = False
 
 
 def _rebuild_sema_background():
@@ -283,15 +316,25 @@ def _rebuild_sema_background():
 
 def warmup_db():
     """Pre-load DB pages into OS cache on startup for faster first queries.
-    If SEMA DB is missing or empty, starts background self-heal."""
+    If any DB is missing or empty, starts background self-heal."""
+    ibama_ok = False
     try:
         conn = consulta.get_conn()
-        conn.execute("SELECT COUNT(*) FROM autos_infracao").fetchone()
+        n = conn.execute("SELECT COUNT(*) FROM autos_infracao").fetchone()[0]
         conn.execute("SELECT COUNT(*) FROM termos_embargo").fetchone()
         conn.close()
-        print("IBAMA DB warmup OK")
+        if n > 0:
+            ibama_ok = True
+            print(f"IBAMA DB warmup OK ({n} autos)")
+        else:
+            print("IBAMA DB warmup: table exists but is empty")
     except Exception as e:
         print(f"IBAMA DB warmup skip: {e}")
+
+    if not ibama_ok and not _ibama_rebuilding:
+        print("IBAMA DB not available - launching background self-heal...")
+        t = threading.Thread(target=_rebuild_ibama_background, daemon=True)
+        t.start()
 
     # SEMA warmup (independent - won't break if sema.db doesn't exist)
     sema_ok = False
@@ -311,7 +354,7 @@ def warmup_db():
         print(f"SEMA DB warmup skip: {e}")
 
     # Self-heal: if SEMA DB is missing/empty, rebuild in background
-    if not sema_ok:
+    if not sema_ok and not _sema_rebuilding:
         print("SEMA DB not available - launching background self-heal...")
         t = threading.Thread(target=_rebuild_sema_background, daemon=True)
         t.start()
